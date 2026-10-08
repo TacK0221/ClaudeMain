@@ -1,0 +1,11 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // スコア帳が使う4つのコレクション（メンバー・対局・連番・チップ）だけ、誰でも読み書きできる。
+    // それ以外の場所には書き込めないので、関係ないデータを置かれることはない。
+    match /members/{id}  { allow read, write: if true; }
+    match /games/{id}    { allow read, write: if true; }
+    match /meta/{id}     { allow read, write: if true; }
+    match /chips/{id}    { allow read, write: if true; }
+  }
+}
