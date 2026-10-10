@@ -361,6 +361,9 @@ const RULESETS={
 const SEATS=['東','南','西','北'];
 /* チップの換算レート（4麻・3麻共通）。換算値は保存せず、表示のたびに 枚数 × レート で計算する */
 const CHIP_RATE=2;
+/* 素点の無い対局で「飛んだ」とみなすスコア。4麻・3麻とも、素点0点以上の最下位はスコア −50 が下限なので、
+   −51 以下は必ず素点がマイナス（−600点以下）。−1〜−599点の飛びは −50 になり、素点0点台と区別できないので数えない */
+const BUST_PT=-51;
 /* inputMode: 入力タブ（半荘・チップ共通）の人数、viewMode: 履歴・成績で表示する種類（この端末に覚えておく） */
 let inputMode=null, viewMode=null, chips=[];
 const $=s=>document.querySelector(s);
@@ -666,11 +669,13 @@ function toChip(id,x){if(!x||!x.chipId||!x.date||!Array.isArray(x.results)||x.re
   return{id,chipId:Number(x.chipId),mode:asMode(x.mode),date:x.date,results:x.results.map(r=>({userId:r.userId,chips:Number(r.chips)||0}))}}
 
 /* ---- 集計 ---- */
-/* 素点の無い対局（記録帳で入力したもの）は、最高素点と飛び率の計算から除く */
+/* 素点の無い対局（記録帳で入力したもの）は、最高素点の計算から除く。
+   飛び率は全半荘が対象で、素点があれば素点 < 0、無ければスコアが BUST_PT 以下を飛びとする */
 function aggregate(list){const by={};
   for(const g of list)for(const p of g.players){const s=by[p.memberId]||(by[p.memberId]={id:p.memberId,games:0,total:0,ranks:[0,0,0,0],rankSum:0,busts:0,rawGames:0,best:-Infinity});
     s.games++;s.total+=p.point;s.ranks[p.rank-1]++;s.rankSum+=p.rank;
-    if(p.raw!=null){s.rawGames++;if(p.raw<0)s.busts++;if(p.raw>s.best)s.best=p.raw}}
+    if(p.raw!=null?p.raw<0:p.point<=BUST_PT)s.busts++;
+    if(p.raw!=null){s.rawGames++;if(p.raw>s.best)s.best=p.raw}}
   return Object.values(by).map(s=>({...s,total:Math.round(s.total*10)/10})).sort((a,b)=>b.total-a.total)}
 function pct(n,d){return d?(n/d*100).toFixed(1)+'%':'—'}
 
@@ -727,7 +732,7 @@ function renderStats(){const n=viewMode,all=viewGames(),list=all.filter(inPeriod
     ${s.chipTimes?`<div class="brk num">スコア ${fmtPt(s.total)} / チップ ${fmtPt(s.chips)}枚（${fmtPt(chipPt(s.chips))}pt）</div>`:''}
     <div class="dist" role="img" aria-label="${s.ranks.slice(0,n).map((c,k)=>`${k+1}位${c}回`).join('、')}">${s.ranks.slice(0,n).map((c,k)=>c?`<i style="flex:${c} 1 0;background:var(--r${k+1===n?4:k+1})"></i>`:'').join('')}</div>
     <div class="meta num"><div>半荘<b>${s.games}</b></div><div>平均順位<b>${s.games?(s.rankSum/s.games).toFixed(2):'—'}</b></div><div>平均pt<b class="${pc(s.total)}">${s.games?fmtPt(Math.round(s.total/s.games*10)/10):'—'}</b></div><div>最高素点<b>${s.rawGames?fmtRaw(s.best):'—'}</b></div>
-    <div>トップ率<b>${pct(s.ranks[0],s.games)}</b></div><div>連対率<b>${pct(s.ranks[0]+s.ranks[1],s.games)}</b></div><div>ラス率<b>${pct(s.ranks[n-1],s.games)}</b></div><div>飛び率<b>${pct(s.busts,s.rawGames)}</b></div></div></div>`).join('')}
+    <div>トップ率<b>${pct(s.ranks[0],s.games)}</b></div><div>連対率<b>${pct(s.ranks[0]+s.ranks[1],s.games)}</b></div><div>ラス率<b>${pct(s.ranks[n-1],s.games)}</b></div><div>飛び率<b>${pct(s.busts,s.games)}</b></div></div></div>`).join('')}
 /* ---- 累積スコアの推移グラフ ----
    横軸 = 1半荘ごと（左端は 0 から始める「開始」）。並びは日付の古い順、同じ日は対局番号の若い順。
    チップの精算はその日の最後の半荘の後に1点として置く（同じ日に複数あれば精算番号順）。縦軸 = その時点までの累積スコア。
