@@ -722,7 +722,8 @@ function inPeriod(g){const t=today();
   if(period==='month')return g.date.slice(0,7)===t.slice(0,7);
   if(period==='custom'){const f=$('#s-from').value,to=$('#s-to').value;return(!f||g.date>=f)&&(!to||g.date<=to)}
   return true}
-/* 大きな合計・並び順・グラフはチップ込み。平均順位・平均pt・各種の率はスコアだけで計算する */
+/* 大きな合計・並び順・グラフはチップ込み。平均順位・平均pt・各種の率はスコアだけで計算する。
+   3麻の連対率は 100% − ラス率 と同じになるので、代わりに2位率を出す */
 function renderStats(){const n=viewMode,all=viewGames(),list=all.filter(inPeriod),cAll=modeChips(n),clist=cAll.filter(inPeriod);const agg=combine(list,clist);
   /* 順位の色見本: 最下位は赤（3麻なら 1位・2位・3位(赤)） */
   $('#rank-legend').innerHTML=[...Array(n).keys()].map(k=>`<span><i style="background:var(--r${k+1===n?4:k+1})"></i>${k+1}位</span>`).join('');
@@ -734,7 +735,7 @@ function renderStats(){const n=viewMode,all=viewGames(),list=all.filter(inPeriod
     ${s.chipTimes?`<div class="brk num">スコア ${fmtPt(s.total)} / チップ ${fmtPt(s.chips)}枚（${fmtPt(chipPt(s.chips))}pt）</div>`:''}
     <div class="dist" role="img" aria-label="${s.ranks.slice(0,n).map((c,k)=>`${k+1}位${c}回`).join('、')}">${s.ranks.slice(0,n).map((c,k)=>c?`<i style="flex:${c} 1 0;background:var(--r${k+1===n?4:k+1})"></i>`:'').join('')}</div>
     <div class="meta num"><div>半荘<b>${s.games}</b></div><div>平均順位<b>${s.games?(s.rankSum/s.games).toFixed(2):'—'}</b></div><div>平均pt<b class="${pc(s.total)}">${s.games?fmtPt(Math.round(s.total/s.games*10)/10):'—'}</b></div><div>最高素点<b>${s.rawGames?fmtRaw(s.best):'—'}</b></div>
-    <div>トップ率<b>${pct(s.ranks[0],s.games)}</b></div><div>連対率<b>${pct(s.ranks[0]+s.ranks[1],s.games)}</b></div><div>ラス率<b>${pct(s.ranks[n-1],s.games)}</b></div><div>飛び率<b>${pct(s.busts,s.games)}</b></div></div></div>`).join('')}
+    <div>トップ率<b>${pct(s.ranks[0],s.games)}</b></div>${n===3?`<div>2位率<b>${pct(s.ranks[1],s.games)}</b></div>`:`<div>連対率<b>${pct(s.ranks[0]+s.ranks[1],s.games)}</b></div>`}<div>ラス率<b>${pct(s.ranks[n-1],s.games)}</b></div><div>飛び率<b>${pct(s.busts,s.games)}</b></div></div></div>`).join('')}
 /* ---- 累積スコアの推移グラフ ----
    横軸 = 1半荘ごと（左端は 0 から始める「開始」）。並びは日付の古い順、同じ日は対局番号の若い順。
    チップの精算はその日の最後の半荘の後に1点として置く（同じ日に複数あれば精算番号順）。縦軸 = その時点までの累積スコア。
