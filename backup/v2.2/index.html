@@ -361,9 +361,11 @@ const RULESETS={
 const SEATS=['東','南','西','北'];
 /* チップの換算レート（4麻・3麻共通）。換算値は保存せず、表示のたびに 枚数 × レート で計算する */
 const CHIP_RATE=2;
-/* 素点の無い対局で「飛んだ」とみなすスコア。4麻・3麻とも、飛んでいない人のスコアは −50 が下限。
-   飛んだ人は飛び賞 −10 が付くので −60 以下になる（記録帳ではスコアに飛び賞を含めて入力している） */
-const BUST_PT=-60;
+/* 飛び賞（記録帳ではスコアに含めて入力している）。素点の無い対局は、スコアがその順位で素点0点台に
+   飛び賞が付いた値（素点 −30/−40 ＋ ウマ − 飛び賞）以下なら飛びとみなす。−1〜−599点は五捨六入で0点扱いになるので「以下」。
+   4麻: 2位 −30・3位 −50・4位 −60、3麻: 2位 −50・3位 −60。飛んでいない人はこれより必ず10以上高い */
+const TOBI_PT=10;
+const bustLine=(mode,rank)=>{const r=RULESETS[mode];return -r.ret/1000+r.uma[rank-1]-TOBI_PT};
 /* inputMode: 入力タブ（半荘・チップ共通）の人数、viewMode: 履歴・成績で表示する種類（この端末に覚えておく） */
 let inputMode=null, viewMode=null, chips=[];
 const $=s=>document.querySelector(s);
@@ -670,11 +672,11 @@ function toChip(id,x){if(!x||!x.chipId||!x.date||!Array.isArray(x.results)||x.re
 
 /* ---- 集計 ---- */
 /* 素点の無い対局（記録帳で入力したもの）は、最高素点の計算から除く。
-   飛び率は全半荘が対象で、素点があれば素点 < 0、無ければスコアが BUST_PT 以下を飛びとする */
+   飛び率は全半荘が対象で、素点があれば素点 < 0、無ければスコアが bustLine 以下（1位は飛ばない）を飛びとする */
 function aggregate(list){const by={};
   for(const g of list)for(const p of g.players){const s=by[p.memberId]||(by[p.memberId]={id:p.memberId,games:0,total:0,ranks:[0,0,0,0],rankSum:0,busts:0,rawGames:0,best:-Infinity});
     s.games++;s.total+=p.point;s.ranks[p.rank-1]++;s.rankSum+=p.rank;
-    if(p.raw!=null?p.raw<0:p.point<=BUST_PT)s.busts++;
+    if(p.raw!=null?p.raw<0:p.rank>1&&p.point<=bustLine(g.mode,p.rank))s.busts++;
     if(p.raw!=null){s.rawGames++;if(p.raw>s.best)s.best=p.raw}}
   return Object.values(by).map(s=>({...s,total:Math.round(s.total*10)/10})).sort((a,b)=>b.total-a.total)}
 function pct(n,d){return d?(n/d*100).toFixed(1)+'%':'—'}
