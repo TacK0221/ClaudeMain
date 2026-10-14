@@ -363,7 +363,8 @@ function tagsOf(hand, r) {
   t.add(s.tsumo ? 'ツモ' : 'ロン');
   if (hand.melds.some(m => m.type !== 'ankan')) t.add('副露');
   t.add(`${r.fu}符`);
-  if (r.cls === 'mangan') t.add('満貫になる符');
+  if (r.han >= 5) t.add('5翻以上');
+  else if (r.cls === 'mangan') t.add('満貫になる符');
   if (r.form === 'chiitoi') t.add('七対子');
   if (r.form === 'normal') {
     if (r.fu === 20) t.add('平和ツモ');
@@ -395,9 +396,10 @@ function pickWeighted(obj) {
   return keys[keys.length - 1];
 }
 
-/* 出題の重み。実戦モードは天鳳などの和了統計を目安にした値（厳密な統計値ではない）
- * 符の練習が目的なので、出題は4翻以下（符で点数が変わる手）に限る */
+/* 出題の重み。天鳳などの和了統計を目安にした値（厳密な統計値ではない）
+ * 符の練習が目的なので、9割は4翻以下（符で点数が変わる手）、1割は5翻以上（満貫・跳満など）を出す */
 const MAX_HAN = 4;
+const HIGH_RATE = 0.1;
 const PRACTICAL = {
   // 和了時の状態: 立直4割・副露3.5割・黙聴2.5割
   style: { riichi: 40, open: 35, dama: 25 },
@@ -414,24 +416,7 @@ const PRACTICAL = {
   honorKouRate: 0.25, // 刻子が字牌になる確率
   // 待ちの重み（実戦は両面が6割前後）
   wait: { ryanmen: 4.5, penchan: 2, kanchan: 1.6, shanpon: 5, tanki: 1 },
-  fuTargets: null,
 };
-
-// 符いろいろモード: 刻子・槓子・嵌張/辺張/単騎を多めにして、20符〜80符以上まで散らす
-const FU = Object.assign({}, PRACTICAL, {
-  style: { riichi: 30, open: 40, dama: 30 },
-  tsumo: { riichi: 0.45, open: 0.4, dama: 0.45 },
-  chiitoi: 0.06,
-  closedThemes: { free: 45, sanankou: 12, yakuhai: 18, chanta: 8, pinfu: 7, tanyao: 10 },
-  openThemes: { yakuhai: 40, toitoi: 18, tanyao: 18, honitsu: 12, chanta: 12 },
-  kan: 0.18,
-  doraBias: 0.25,
-  kouRate: 0.42,
-  honorKouRate: 0.35,
-  wait: { ryanmen: 2, penchan: 2.5, kanchan: 2.5, shanpon: 4, tanki: 2.5 },
-  // 出題する符の割合（80 は80符以上。4翻以下で90符を超える手はほとんど作れない）
-  fuTargets: { 20: 5, 25: 5, 30: 16, 40: 22, 50: 18, 60: 14, 70: 10, 80: 10 },
-});
 
 let K = PRACTICAL; // 生成中の設定（面子の選び方で使う）
 let SEAT = null;   // 'oya' | 'ko' | null（どちらも）
@@ -689,29 +674,22 @@ function applyDora(hand, cfg) {
   if (s.riichi) for (let i = 0; i < n; i++) s.ura.push(drawFree());
 }
 
-/* 問題を1つ作る。mode: 'practical'（実戦） | 'fu'（符いろいろ）
- * 4翻以下・役満なしの手だけを出す。accept(hand, result) を渡すと、条件に合う問題が出るまで作り直す（苦手モード用）
+/* 問題を1つ作る。役満は出さない
  * seat: 'oya' | 'ko' で親・子を固定（省略するとどちらも出る） */
-function generate(mode, accept, seat) {
-  const cfg = mode === 'fu' ? FU : PRACTICAL;
+function generate(seat) {
+  const cfg = PRACTICAL;
   K = cfg;
   SEAT = seat || null;
-  const target = cfg.fuTargets && !accept ? +pickWeighted(cfg.fuTargets) : null;
-  let fallback = null;
-  const limit = accept ? 4000 : 1500;
-  for (let i = 0; i < limit; i++) {
+  const high = rand() < HIGH_RATE;
+  for (let i = 0; i < 3000; i++) {
     const hand = rand() < cfg.chiitoi ? genChiitoi(cfg, pickWeighted(cfg.style)) : genNormal(cfg);
     if (!hand) continue;
     const result = score(hand);
-    if (!result || result.yakumanMult || result.han > MAX_HAN) continue;
-    if (accept && !accept(hand, result)) continue;
-    if (target === null || (target >= 80 ? result.fu >= 80 : result.fu === target)) return { hand, result };
-    // 目標の符が出なかったときは、いちばん近い符の手を出す
-    const gap = Math.abs(result.fu - target);
-    if (!fallback || gap < fallback.gap) fallback = { hand, result, gap };
+    if (!result || result.yakumanMult) continue;
+    if (high ? result.han <= MAX_HAN : result.han > MAX_HAN) continue;
+    return { hand, result };
   }
-  if (fallback) return { hand: fallback.hand, result: fallback.result };
-  return accept ? null : generate(mode, null, seat);
+  return generate(seat);
 }
 
 /* 4択の選択肢。正解と、よくある間違い方をした点数3つを返す
@@ -749,9 +727,10 @@ function choices(result, sit) {
     wrong.push(c);
     if (wrong.length === 3) break;
   }
-  // まだ3つにならないとき（高い符の満貫など）は、翻を下げて符も下げた点数で埋める
+  // まだ3つにならないとき（満貫以上など）は、翻を下げていろいろな符で計算した点数で埋める
   for (let h = r.han - 1; h >= 1 && wrong.length < 3; h--) {
-    for (let f = r.fu - 10; f >= 20 && wrong.length < 3; f -= 10) {
+    for (const f of [r.fu, 30, 40, 50, 20, 60, 70]) {
+      if (wrong.length >= 3) break;
       const c = { pay: pay(h, f, r.oya), why: `${h}翻${f}符で計算した点数` };
       const k = payKey(c.pay);
       if (!seen.has(k)) { seen.add(k); wrong.push(c); }
@@ -761,7 +740,7 @@ function choices(result, sit) {
 }
 
 const api = {
-  RULES, WAIT_NAMES, PRACTICAL, FU, MAX_HAN,
+  RULES, WAIT_NAMES, PRACTICAL, MAX_HAN, HIGH_RATE,
   norm, isRed, isHonor, suitOf, numOf, tileName, doraFromIndicator,
   decompose, score, generate, basePoints, payments, choices,
   setRandom(f) { rand = f; },

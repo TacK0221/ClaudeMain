@@ -99,19 +99,20 @@ check('槓子', hand('234m567p9s', '9s', { tsumo: true }, [['minkan', '7777z'], 
 
 console.log(`点数計算: ${pass} 件OK / ${fail} 件NG`);
 
-// 生成した問題がすべて和了形で、役があり、4翻以下
-for (const mode of ['practical', 'fu']) {
+// 生成した問題がすべて和了形で、役があり、役満でない。5翻以上は1割ほど
+for (const mode of ['practical']) {
   const n = 3000;
   const fu = {}, style = {}, tags = {};
-  let bad = 0, tsumo = 0;
+  let bad = 0, tsumo = 0, high = 0;
   const t0 = Date.now();
   for (let i = 0; i < n; i++) {
-    const p = M.generate(mode);
+    const p = M.generate();
     if (!p || !p.result) { bad++; continue; }
     const counts = new Array(34).fill(0);
     for (const t of p.hand.closed.concat([p.hand.winTile], ...p.hand.melds.map(m => m.tiles), p.hand.sit.dora, p.hand.sit.ura)) counts[M.norm(t)]++;
     if (counts.some(c => c > 4) || p.hand.closed.length + 1 + p.hand.melds.length * 3 !== 14) { bad++; console.log('牌の枚数がおかしい', JSON.stringify(p.hand)); }
-    if (p.result.han > 4 || p.result.yakumanMult) { bad++; console.log('5翻以上', p.result.han); }
+    if (p.result.yakumanMult) { bad++; console.log('役満', JSON.stringify(p.hand)); }
+    if (p.result.han >= 5) high++;
     const ch = M.choices(p.result, p.hand.sit);
     const keys = new Set(ch.map(c => JSON.stringify(c.pay)));
     if (ch.length !== 4 || keys.size !== 4 || ch.filter(c => c.correct).length !== 1) { bad++; console.log('4択がおかしい', JSON.stringify(ch)); }
@@ -123,7 +124,8 @@ for (const mode of ['practical', 'fu']) {
   }
   const pct = o => Object.entries(o).sort((a, b) => (parseInt(a[0]) || 0) - (parseInt(b[0]) || 0)).map(([k, v]) => `${k} ${(v / n * 100).toFixed(1)}%`).join(', ');
   console.log(`[${mode}] ${n}問 ${Date.now() - t0}ms  不正 ${bad}`);
-  console.log('  符:', pct(fu));
+  console.log('  符:', pct(fu), ` 5翻以上 ${(high / n * 100).toFixed(1)}%`);
+  if (high / n < 0.07 || high / n > 0.13) { bad++; console.log('5翻以上の割合が1割から外れている'); }
   console.log('  状態:', pct(style), ` ツモ ${(tsumo / n * 100).toFixed(1)}%`);
   console.log('  分類:', Object.entries(tags).filter(([k]) => !/符$|^[親子]$|^ツモ$|^ロン$/.test(k)).map(([k, v]) => `${k} ${(v / n * 100).toFixed(0)}%`).join(', '));
   if (bad) fail++;
