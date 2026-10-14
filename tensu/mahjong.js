@@ -355,16 +355,29 @@ function score(hand) {
   return best;
 }
 
-// 苦手克服モードで使う分類
+// 苦手モードで使う分類（符の要素ごと）
 function tagsOf(hand, r) {
+  const s = hand.sit;
   const t = new Set();
   t.add(r.oya ? '親' : '子');
-  t.add(hand.sit.tsumo ? 'ツモ' : 'ロン');
+  t.add(s.tsumo ? 'ツモ' : 'ロン');
   if (hand.melds.some(m => m.type !== 'ankan')) t.add('副露');
-  t.add(CLASS_LABEL[r.cls]);
-  if (r.cls === 'low') t.add(`${r.fu}符`);
-  for (const y of r.yaku) if (!y.dora) t.add(y.name.replace(/ .*/, ''));
-  for (const y of r.yakuman) t.add(y.name);
+  t.add(`${r.fu}符`);
+  if (r.cls === 'mangan') t.add('満貫になる符');
+  if (r.form === 'chiitoi') t.add('七対子');
+  if (r.form === 'normal') {
+    if (r.fu === 20) t.add('平和ツモ');
+    for (const g of r.groups) {
+      if (g.type === 'shuntsu') continue;
+      t.add(g.type === 'kantsu' ? '槓子' : (g.concealed ? '暗刻' : '明刻'));
+      if (isYaochu(g.tile)) t.add('么九牌の刻子');
+    }
+    const pf = pairFu(r.pair, s);
+    if (pf) t.add(windLabel(r.pair, s).length === 2 ? '連風牌の雀頭' : '役牌の雀頭');
+    if (r.wait === 'kanchan' || r.wait === 'penchan' || r.wait === 'tanki') t.add('嵌張・辺張・単騎');
+    if (r.wait === 'shanpon' && !s.tsumo) t.add('シャンポンのロン');
+    if (r.fuDetail.raw === 20 && r.fu === 30) t.add('副露の30符');
+  }
   return [...t];
 }
 
@@ -382,40 +395,45 @@ function pickWeighted(obj) {
   return keys[keys.length - 1];
 }
 
-/* 出題の重み。実戦モードは天鳳などの和了統計を目安にした値（厳密な統計値ではない） */
+/* 出題の重み。実戦モードは天鳳などの和了統計を目安にした値（厳密な統計値ではない）
+ * 符の練習が目的なので、出題は4翻以下（符で点数が変わる手）に限る */
+const MAX_HAN = 4;
 const PRACTICAL = {
-  // 満貫未満が6割強、満貫以上が3割強
-  classes: { low: 64, mangan: 22, haneman: 9, baiman: 4, sanbaiman: 0.6, yakuman: 0.4 },
   // 和了時の状態: 立直4割・副露3.5割・黙聴2.5割
   style: { riichi: 40, open: 35, dama: 25 },
   tsumo: { riichi: 0.45, open: 0.32, dama: 0.35 },
-  chiitoi: 0.035,
-  closedThemes: { free: 48, pinfu: 22, tanyao: 14, iipeikou: 5, yakuhai: 5, honitsu: 2.5, ittsu: 1.5, sanshoku: 1.5, chanta: 1, sanankou: 0.7 },
+  chiitoi: 0.04,
+  closedThemes: { free: 48, pinfu: 22, tanyao: 14, iipeikou: 5, yakuhai: 5, honitsu: 2, ittsu: 1.5, sanshoku: 1.5, chanta: 1, sanankou: 0.7 },
   openThemes: { yakuhai: 46, tanyao: 32, honitsu: 10, toitoi: 6, ittsu: 2, sanshoku: 2, chanta: 1.5, shousangen: 0.5 },
   calls: { 1: 40, 2: 35, 3: 20, 4: 5 },
   kan: 0.05,
-  doraBias: 0.4,     // ドラを手の内に残している確率（ランダムだとドラが少なすぎるため）
+  doraBias: 0.3,     // ドラを手の内に残している確率（ランダムだとドラが少なすぎるため）
   ippatsu: 0.09, doubleRiichi: 0.01, lastTile: 0.02, rinshan: 0.3,
   roundWind: { 27: 60, 28: 40 },
-  yakuman: { suuankou: 35, daisangen: 25, kokushi: 18, tsuuiisou: 6, shousuushii: 6, ryuuiisou: 3, chinroutou: 2, chuuren: 3, daisuushii: 2 },
+  kouRate: 0.2,      // 普通の面子が刻子になる確率
+  honorKouRate: 0.25, // 刻子が字牌になる確率
+  // 待ちの重み（実戦は両面が6割前後）
+  wait: { ryanmen: 4.5, penchan: 2, kanchan: 1.6, shanpon: 5, tanki: 1 },
+  fuTargets: null,
 };
 
-// ランダムモード: 珍しい役・高い手も多めに出す
-const RANDOM = Object.assign({}, PRACTICAL, {
-  classes: { low: 38, mangan: 20, haneman: 16, baiman: 12, sanbaiman: 6, yakuman: 8 },
-  style: { riichi: 34, open: 33, dama: 33 },
-  chiitoi: 0.07,
-  closedThemes: { free: 15, pinfu: 12, tanyao: 10, iipeikou: 8, yakuhai: 8, honitsu: 8, chinitsu: 5, ittsu: 7, sanshoku: 7, chanta: 7, sanankou: 6, ryanpeikou: 4, sanshokudoukou: 3, shousangen: 3 },
-  openThemes: { yakuhai: 18, tanyao: 15, honitsu: 14, chinitsu: 6, toitoi: 12, ittsu: 9, sanshoku: 9, chanta: 9, shousangen: 5, honroutou: 3 },
-  kan: 0.12,
-  yakuman: { suuankou: 15, daisangen: 15, kokushi: 15, tsuuiisou: 10, shousuushii: 10, ryuuiisou: 10, chinroutou: 8, chuuren: 10, daisuushii: 7 },
+// 符いろいろモード: 刻子・槓子・嵌張/辺張/単騎を多めにして、20符〜80符以上まで散らす
+const FU = Object.assign({}, PRACTICAL, {
+  style: { riichi: 30, open: 40, dama: 30 },
+  tsumo: { riichi: 0.45, open: 0.4, dama: 0.45 },
+  chiitoi: 0.06,
+  closedThemes: { free: 45, sanankou: 12, yakuhai: 18, chanta: 8, pinfu: 7, tanyao: 10 },
+  openThemes: { yakuhai: 40, toitoi: 18, tanyao: 18, honitsu: 12, chanta: 12 },
+  kan: 0.18,
+  doraBias: 0.25,
+  kouRate: 0.42,
+  honorKouRate: 0.35,
+  wait: { ryanmen: 2, penchan: 2.5, kanchan: 2.5, shanpon: 4, tanki: 2.5 },
+  // 出題する符の割合（80 は80符以上。4翻以下で90符を超える手はほとんど作れない）
+  fuTargets: { 20: 5, 25: 5, 30: 16, 40: 22, 50: 18, 60: 14, 70: 10, 80: 10 },
 });
 
-// 高い手を出したいときに使う、打点の高い構成へ寄せた重み
-const BOOST = {
-  closedThemes: { free: 10, pinfu: 10, tanyao: 12, iipeikou: 8, yakuhai: 8, honitsu: 18, chinitsu: 8, ittsu: 7, sanshoku: 7, chanta: 6, sanankou: 6, ryanpeikou: 3 },
-  openThemes: { yakuhai: 20, tanyao: 8, honitsu: 30, chinitsu: 10, toitoi: 18, shousangen: 6, chanta: 4, ittsu: 2, sanshoku: 2 },
-};
+let K = PRACTICAL; // 生成中の設定（面子の選び方で使う）
 
 const SHUN_STARTS = []; for (const b of [0, 9, 18]) for (let n = 0; n < 7; n++) SHUN_STARTS.push(b + n);
 const ALL_TILES = Array.from({ length: 34 }, (_, i) => i);
@@ -426,8 +444,8 @@ const HONORS = [27, 28, 29, 30, 31, 32, 33];
 const shun = (f = () => true) => () => ({ type: 'shuntsu', tile: pick(SHUN_STARTS.filter(f)) });
 const kou = (f = () => true) => () => ({ type: 'koutsu', tile: pick(ALL_TILES.filter(f)) });
 const numKou = f => kou(t => t < 27 && (!f || f(t)));
-// 普通の面子: 8割が順子。刻子は数牌7割5分・字牌2割5分
-const freeGroup = () => (rand() < 0.8 ? shun()() : (rand() < 0.75 ? numKou()() : kou(isHonor)()));
+// 普通の面子: 実戦モードでは8割が順子。刻子の何割が字牌かも設定で決める
+const freeGroup = () => (rand() >= K.kouRate ? shun()() : (rand() >= K.honorKouRate ? numKou()() : kou(isHonor)()));
 const freePair = () => (rand() < 0.78 ? pick(NUM_TILES) : pick(HONORS));
 const inSuit = (s, f) => t => suitOf(t) === s && (!f || f(t));
 
@@ -488,23 +506,6 @@ function themeSpec(name, ctx) {
       const n = randInt(7);
       return { groups: [0, 9, 18].map(b => () => ({ type: 'shuntsu', tile: b + n })).concat([freeGroup]), pair: freePair };
     }
-    // 役満
-    case 'suuankou': return { groups: [kou(), kou(), numKou(), numKou()], pair: freePair, concealedKou: true, closedOnly: true };
-    case 'daisangen': return { groups: [31, 32, 33].map(t => () => ({ type: 'koutsu', tile: t })).concat([freeGroup]), pair: freePair, callFirst: true };
-    case 'tsuuiisou': return { groups: [kou(isHonor), kou(isHonor), kou(isHonor), kou(isHonor)], pair: () => pick(HONORS) };
-    case 'shousuushii': {
-      const ws = [27, 28, 29, 30].sort(() => rand() - 0.5);
-      return { groups: ws.slice(0, 3).map(t => () => ({ type: 'koutsu', tile: t })).concat([freeGroup]), pair: () => ws[3] };
-    }
-    case 'daisuushii': return { groups: [27, 28, 29, 30].map(t => () => ({ type: 'koutsu', tile: t })), pair: freePair };
-    case 'ryuuiisou': {
-      const g = () => (rand() < 0.5 ? { type: 'shuntsu', tile: 19 } : { type: 'koutsu', tile: pick([...GREEN]) });
-      return { groups: [g, g, g, g], pair: () => pick([...GREEN]) };
-    }
-    case 'chinroutou': {
-      const g = kou(isTerminal);
-      return { groups: [g, g, g, g], pair: () => pick(ALL_TILES.filter(isTerminal)) };
-    }
     default: throw new Error('unknown theme ' + name);
   }
 }
@@ -545,18 +546,11 @@ function makeSituation(cfg, style) {
   return s;
 }
 
-function genNormal(cfg, boost) {
-  const isYakumanTheme = typeof boost === 'string';
-  let style = isYakumanTheme ? (rand() < 0.5 ? 'dama' : 'open') : pickWeighted(cfg.style);
+function genNormal(cfg) {
+  const style = pickWeighted(cfg.style);
   const s = makeSituation(cfg, style);
-  let theme;
-  if (isYakumanTheme) theme = boost;
-  else {
-    const themes = style === 'open' ? (boost ? BOOST.openThemes : cfg.openThemes) : (boost ? BOOST.closedThemes : cfg.closedThemes);
-    theme = pickWeighted(themes);
-  }
+  const theme = pickWeighted(style === 'open' ? cfg.openThemes : cfg.closedThemes);
   const spec = themeSpec(theme, s);
-  if (spec.closedOnly && style === 'open') { style = 'dama'; }
   const built = buildGroups(spec);
   if (!built) return null;
   const { groups, pair, used } = built;
@@ -580,20 +574,21 @@ function genNormal(cfg, boost) {
     }
   }
 
-  // 和了牌を決める（実戦で多い両面待ちを重くする）
+  // 和了牌を決める（待ちの形ごとの重みは設定から）
+  const W = cfg.wait;
   const opts = [];
   groups.forEach((g, i) => {
     if (calledIdx.has(i) || g.type === 'kantsu') return;
     if (g.type === 'shuntsu') {
       const n = numOf(g.tile);
-      opts.push({ i, tile: g.tile, w: n === 7 ? 2 : 4.5, ryanmen: n !== 7 });
-      opts.push({ i, tile: g.tile + 1, w: 1.6 });
-      opts.push({ i, tile: g.tile + 2, w: n === 1 ? 2 : 4.5, ryanmen: n !== 1 });
+      opts.push({ i, tile: g.tile, w: n === 7 ? W.penchan : W.ryanmen, ryanmen: n !== 7 });
+      opts.push({ i, tile: g.tile + 1, w: W.kanchan });
+      opts.push({ i, tile: g.tile + 2, w: n === 1 ? W.penchan : W.ryanmen, ryanmen: n !== 1 });
     } else if (!(spec.concealedKou && !s.tsumo)) {
-      opts.push({ i, tile: g.tile, w: 5 });
+      opts.push({ i, tile: g.tile, w: W.shanpon });
     }
   });
-  opts.push({ i: -1, tile: pair, w: spec.concealedKou && !s.tsumo ? 10 : 1 });
+  opts.push({ i: -1, tile: pair, w: spec.concealedKou && !s.tsumo ? 10 : W.tanki });
   const usable = spec.ryanmen ? opts.filter(o => o.ryanmen) : opts;
   if (!usable.length) return null;
   const wsum = usable.reduce((a, o) => a + o.w, 0);
@@ -620,7 +615,7 @@ function genNormal(cfg, boost) {
 
   const hand = { closed, winTile: chosen.tile, melds, sit: s, theme, style };
   applyAka(hand);
-  applyDora(hand, cfg, boost);
+  applyDora(hand, cfg);
   hand.closed.sort((a, b) => norm(a) - norm(b) || a - b);
   return hand;
 }
@@ -640,41 +635,9 @@ function genChiitoi(cfg, style) {
   closed.splice(closed.indexOf(winPair), 1);
   const hand = { closed, winTile: winPair, melds: [], sit: s, theme: 'chiitoi', style };
   applyAka(hand);
-  applyDora(hand, cfg, false);
+  applyDora(hand, cfg);
   hand.closed.sort((a, b) => norm(a) - norm(b) || a - b);
   return hand;
-}
-
-function genKokushi(cfg) {
-  const s = makeSituation(cfg, 'dama');
-  const yao = [0, 8, 9, 17, 18, 26, 27, 28, 29, 30, 31, 32, 33];
-  const tiles = yao.concat([pick(yao)]);
-  const win = pick(tiles);
-  tiles.splice(tiles.indexOf(win), 1);
-  const hand = { closed: tiles, winTile: win, melds: [], sit: s, theme: 'kokushi', style: 'dama' };
-  applyDora(hand, cfg, false);
-  hand.closed.sort((a, b) => a - b);
-  return hand;
-}
-
-function genChuuren(cfg) {
-  const s = makeSituation(cfg, 'dama');
-  const S = randInt(3);
-  const tiles = [0, 0, 0, 1, 2, 3, 4, 5, 6, 7, 8, 8, 8, randInt(9)].map(n => S * 9 + n);
-  const win = pick(tiles);
-  tiles.splice(tiles.indexOf(win), 1);
-  const hand = { closed: tiles, winTile: win, melds: [], sit: s, theme: 'chuuren', style: 'dama' };
-  applyAka(hand);
-  applyDora(hand, cfg, false);
-  hand.closed.sort((a, b) => norm(a) - norm(b) || a - b);
-  return hand;
-}
-
-function genYakuman(cfg) {
-  const kind = pickWeighted(cfg.yakuman);
-  if (kind === 'kokushi') return genKokushi(cfg);
-  if (kind === 'chuuren') return genChuuren(cfg);
-  return genNormal(cfg, kind);
 }
 
 // 手の中の5を、4枚中1枚の確率で赤にする
@@ -698,13 +661,13 @@ function applyAka(hand) {
 }
 
 // ドラ表示牌。槓1回ごとに1枚増える。裏ドラは立直したときだけ
-function applyDora(hand, cfg, boost) {
+function applyDora(hand, cfg) {
   const s = hand.sit;
   const all = hand.closed.concat([hand.winTile], ...hand.melds.map(m => m.tiles)).map(norm);
   const used = new Array(34).fill(0);
   for (const t of all) used[t]++;
   const n = 1 + hand.melds.filter(m => m.type === 'minkan' || m.type === 'ankan').length;
-  const bias = boost ? 0.85 : cfg.doraBias;
+  const bias = cfg.doraBias;
   const drawFree = () => {
     const pool = [];
     for (let t = 0; t < 34; t++) for (let k = used[t]; k < 4; k++) pool.push(t);
@@ -724,40 +687,31 @@ function applyDora(hand, cfg, boost) {
   if (s.riichi) for (let i = 0; i < n; i++) s.ura.push(drawFree());
 }
 
-function generateOne(cfg, target) {
-  if (target === 'yakuman') return genYakuman(cfg);
-  const boost = target === 'haneman' || target === 'baiman' || target === 'sanbaiman';
-  const style = pickWeighted(cfg.style);
-  if (rand() < cfg.chiitoi) return genChiitoi(cfg, style);
-  return genNormal(cfg, boost);
-}
-
-/* 問題を1つ作る。mode: 'practical' | 'random'
- * accept(hand, result) を渡すと、条件に合う問題が出るまで作り直す（苦手克服モード用） */
+/* 問題を1つ作る。mode: 'practical'（実戦） | 'fu'（符いろいろ）
+ * 4翻以下・役満なしの手だけを出す。accept(hand, result) を渡すと、条件に合う問題が出るまで作り直す（苦手モード用） */
 function generate(mode, accept) {
-  const cfg = mode === 'random' ? RANDOM : PRACTICAL;
-  for (let round = 0; round < 3; round++) {
-    const target = pickWeighted(cfg.classes);
-    let fallback = null;
-    const limit = accept ? 3000 : 800;
-    for (let i = 0; i < limit; i++) {
-      // 条件付きのときは打点の目標を毎回選び直して、条件に合う手を探しやすくする
-      const tgt = accept ? pickWeighted(cfg.classes) : target;
-      const hand = generateOne(cfg, tgt);
-      if (!hand) continue;
-      const result = score(hand);
-      if (!result) continue;
-      if (accept && !accept(hand, result)) continue;
-      if (accept || result.cls === target) return { hand, result };
-      if (!fallback) fallback = { hand, result };
-    }
-    if (fallback && !accept) return fallback;
+  const cfg = mode === 'fu' ? FU : PRACTICAL;
+  K = cfg;
+  const target = cfg.fuTargets && !accept ? +pickWeighted(cfg.fuTargets) : null;
+  let fallback = null;
+  const limit = accept ? 4000 : 1500;
+  for (let i = 0; i < limit; i++) {
+    const hand = rand() < cfg.chiitoi ? genChiitoi(cfg, pickWeighted(cfg.style)) : genNormal(cfg);
+    if (!hand) continue;
+    const result = score(hand);
+    if (!result || result.yakumanMult || result.han > MAX_HAN) continue;
+    if (accept && !accept(hand, result)) continue;
+    if (target === null || (target >= 80 ? result.fu >= 80 : result.fu === target)) return { hand, result };
+    // 目標の符が出なかったときは、いちばん近い符の手を出す
+    const gap = Math.abs(result.fu - target);
+    if (!fallback || gap < fallback.gap) fallback = { hand, result, gap };
   }
+  if (fallback) return { hand: fallback.hand, result: fallback.result };
   return accept ? null : generate(mode);
 }
 
 const api = {
-  RULES, CLASS_LABEL, WAIT_NAMES, PRACTICAL, RANDOM,
+  RULES, WAIT_NAMES, PRACTICAL, FU, MAX_HAN,
   norm, isRed, isHonor, suitOf, numOf, tileName, doraFromIndicator,
   decompose, score, generate, basePoints, payments,
   setRandom(f) { rand = f; },

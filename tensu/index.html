@@ -41,7 +41,8 @@ body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--body);font
 .card{background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:14px}
 .muted{color:var(--muted)} .small{font-size:12.5px}
 h2{font-family:var(--display);font-size:18px;margin:0 0 8px}
-.controls{display:grid;grid-template-columns:minmax(0,1.4fr) minmax(0,1fr);gap:10px}
+.controls{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:10px}
+@media (max-width:420px){.controls{grid-template-columns:minmax(0,1fr)}}
 .sw-group{display:flex;flex-direction:column;gap:4px;min-width:0}
 .sw-label{font-size:11.5px;color:var(--muted);letter-spacing:.06em}
 .seg{display:flex;background:var(--seg);border:1px solid var(--line);border-radius:9px;padding:3px;gap:3px}
@@ -142,15 +143,16 @@ details.rules ul{margin:8px 0 0;padding-left:1.2em;font-size:13.5px}
         <span class="sw-label">出題</span>
         <div class="seg" id="mode-seg" role="group" aria-label="出題モード">
           <button type="button" data-mode="practical">実戦</button>
-          <button type="button" data-mode="random">ランダム</button>
+          <button type="button" data-mode="fu">符いろいろ</button>
           <button type="button" data-mode="weak">苦手</button>
         </div>
       </div>
       <div class="sw-group">
         <span class="sw-label">答え方</span>
         <div class="seg" id="level-seg" role="group" aria-label="答え方">
+          <button type="button" data-level="fu">符</button>
+          <button type="button" data-level="fupts">符＋点数</button>
           <button type="button" data-level="points">点数</button>
-          <button type="button" data-level="full">翻・符も</button>
         </div>
       </div>
     </div>
@@ -161,7 +163,6 @@ details.rules ul{margin:8px 0 0;padding-left:1.2em;font-size:13.5px}
 
   <form class="card answer" id="answer" autocomplete="off">
     <div class="fields" id="fields"></div>
-    <div class="adv-note" id="adv-note" hidden>翻・符も合っていれば正解。満貫以上は符を問いません（役満は翻・符とも問いません）。</div>
     <div class="btns">
       <button type="submit" class="btn primary">答え合わせ</button>
       <button type="button" class="btn ghost" id="giveup">わからない</button>
@@ -181,13 +182,14 @@ details.rules ul{margin:8px 0 0;padding-left:1.2em;font-size:13.5px}
     <details class="rules">
       <summary>ルール</summary>
       <ul>
+        <li>符の練習用に、4翻以下（符で点数が変わる手）だけを出題します</li>
         <li>喰いタンあり・赤ドラあり（5萬・5筒・5索 各1枚）</li>
         <li>切り上げ満貫あり（4翻30符・3翻60符は満貫）</li>
-        <li>数え役満あり（13翻以上）。ダブル役満なし（役満の複合はあり）</li>
         <li>連風牌（ダブ東など）の雀頭は4符</li>
+        <li>平和ツモは20符、七対子は25符。副露して20符になる手は30符</li>
         <li>本場・供託は無し。点数は和了した人が受け取る点数で答えます</li>
         <li>ツモは「子の支払い / 親の支払い」、親のツモは「◯点オール」</li>
-        <li>高く取れる解釈が複数あるときは、一番高いものが正解</li>
+        <li>待ちの取り方が複数あるときは、点数が一番高くなる取り方が正解</li>
         <li>出題の頻度（実戦モード）は天鳳などの和了統計を目安にした近似値です</li>
       </ul>
     </details>
@@ -205,15 +207,22 @@ const STORE = 'tensu-drill-v1';
 const $ = id => document.getElementById(id);
 
 const MODE_NOTES = {
-  practical: '実戦でよく出る手（立直・平和・タンヤオ・役牌、満貫未満が6割強）を中心に出題します',
-  random: '珍しい役・高い手・役満も多めに出題します',
-  weak: '間違えたことのある分類（役・ツモ/ロン・親/子・符など）を優先して出題します',
+  practical: '実戦でよく出る手（立直・平和・タンヤオ・役牌）から出題します。30符・40符が中心です',
+  fu: '刻子・槓子・嵌張/辺張/単騎を多めにして、20符〜80符以上まで満遍なく出題します',
+  weak: '間違えたことのある分類（暗刻・么九牌の刻子・単騎などの待ち・シャンポンのロンなど）を優先して出題します',
 };
+const LEVELS = ['fu', 'fupts', 'points'];
 
 // 保存（端末のブラウザにだけ残る。使えない環境でも動くように try で囲む）
 function load() {
-  try { return Object.assign({ mode: 'practical', level: 'points', total: 0, correct: 0, streak: 0, best: 0, tags: {} }, JSON.parse(localStorage.getItem(STORE) || '{}')); }
-  catch (e) { return { mode: 'practical', level: 'points', total: 0, correct: 0, streak: 0, best: 0, tags: {} }; }
+  const base = { ver: 2, mode: 'fu', level: 'fu', total: 0, correct: 0, streak: 0, best: 0, tags: {} };
+  let v;
+  try { v = Object.assign({}, base, JSON.parse(localStorage.getItem(STORE) || '{}')); } catch (e) { return base; }
+  // 前の版（役・打点の分類）からは、分類の記録だけ消して符の分類に切り替える
+  if (v.ver !== 2) Object.assign(v, { ver: 2, tags: {}, mode: 'fu', level: 'fu' });
+  if (!MODE_NOTES[v.mode]) v.mode = 'fu';
+  if (!LEVELS.includes(v.level)) v.level = 'fu';
+  return v;
 }
 function save() { try { localStorage.setItem(STORE, JSON.stringify(st)); } catch (e) { /* 保存できなくても続ける */ } }
 const st = load();
@@ -293,13 +302,14 @@ function field(id, label, unit) {
 }
 function renderFields() {
   const s = cur.hand.sit, oya = s.seatWind === 27;
-  let html;
-  if (!s.tsumo) html = field('a-ron', '点数（ロン）', '点');
-  else if (oya) html = field('a-all', '各家の支払い', '点オール');
-  else html = field('a-ko', '子の支払い', '点') + field('a-oya', '親の支払い', '点');
-  if (st.level === 'full') html += field('a-han', '翻', '翻') + field('a-fu', '符', '符');
+  let html = '';
+  if (st.level !== 'points') html += field('a-fu', '符', '符');
+  if (st.level !== 'fu') {
+    if (!s.tsumo) html += field('a-ron', '点数（ロン）', '点');
+    else if (oya) html += field('a-all', '各家の支払い', '点オール');
+    else html += field('a-ko', '子の支払い', '点') + field('a-oya', '親の支払い', '点');
+  }
   $('fields').innerHTML = html;
-  $('adv-note').hidden = st.level !== 'full';
   const first = $('fields').querySelector('input');
   // スマホでは自動でキーボードを出さない（問題が隠れるため）
   if (first && window.matchMedia('(hover: hover)').matches) first.focus({ preventScroll: true });
@@ -332,7 +342,7 @@ function newProblem() {
     const w = weakAccept();
     let p = null;
     if (w) {
-      p = M.generate('random', w.fn) || M.generate('practical', w.fn);
+      p = M.generate('fu', w.fn) || M.generate('practical', w.fn);
       if (p) note = `苦手な分類「${w.tag}」から出題`;
     }
     if (!p) { note = w ? `「${w.tag}」の問題を作れなかったので実戦モードで出題` : 'まだ間違えた問題がないので、実戦モードで出題しています'; p = M.generate('practical'); }
@@ -357,31 +367,30 @@ function correctText(r, sit) {
   return `${fmt(r.pay.ko)} / ${fmt(r.pay.oya)}点`;
 }
 function hanFuText(r) {
-  if (r.cls === 'yakuman') return r.label;
-  const hf = r.cls === 'low' || (r.han <= 4) ? `${r.fu}符${r.han}翻` : `${r.han}翻`;
+  const hf = `${r.fu}符${r.han}翻`;
   return r.label ? `${hf}・${r.label}` : hf;
 }
 
 function judge(giveUp) {
   if (answered) return;
   const r = cur.result, s = cur.hand.sit;
-  const vals = { ron: numVal('a-ron'), all: numVal('a-all'), ko: numVal('a-ko'), oya: numVal('a-oya'), han: numVal('a-han'), fu: numVal('a-fu') };
+  const vals = { ron: numVal('a-ron'), all: numVal('a-all'), ko: numVal('a-ko'), oya: numVal('a-oya'), fu: numVal('a-fu') };
+  const askFu = st.level !== 'points', askPts = st.level !== 'fu';
   if (!giveUp) {
-    const need = !s.tsumo ? ['ron'] : (r.oya ? ['all'] : ['ko', 'oya']);
-    if (st.level === 'full' && r.cls !== 'yakuman') need.push('han');
-    if (st.level === 'full' && r.cls !== 'yakuman' && r.han <= 4) need.push('fu');
+    const need = [];
+    if (askFu) need.push('fu');
+    if (askPts) need.push(...(!s.tsumo ? ['ron'] : (r.oya ? ['all'] : ['ko', 'oya'])));
     const missing = need.find(k => vals[k] === null);
     if (missing) { $('a-' + missing).focus(); return; }
   }
-  let ptsOk, hanOk = true, fuOk = true;
-  if (!s.tsumo) ptsOk = vals.ron === r.pay.ron;
-  else if (r.oya) ptsOk = vals.all === r.pay.all;
-  else ptsOk = vals.ko === r.pay.ko && vals.oya === r.pay.oya;
-  if (st.level === 'full' && r.cls !== 'yakuman') {
-    hanOk = vals.han === r.han;
-    if (r.han <= 4) fuOk = vals.fu === r.fu;
+  let ptsOk = true, fuOk = true;
+  if (askPts) {
+    if (!s.tsumo) ptsOk = vals.ron === r.pay.ron;
+    else if (r.oya) ptsOk = vals.all === r.pay.all;
+    else ptsOk = vals.ko === r.pay.ko && vals.oya === r.pay.oya;
   }
-  const ok = !giveUp && ptsOk && hanOk && fuOk;
+  if (askFu) fuOk = vals.fu === r.fu;
+  const ok = !giveUp && ptsOk && fuOk;
   answered = true;
 
   st.total++;
@@ -394,16 +403,18 @@ function judge(giveUp) {
   }
   save();
   renderStats();
-  renderResult(ok, giveUp, vals, { ptsOk, hanOk, fuOk });
+  renderResult(ok, giveUp, vals, { ptsOk, fuOk });
 }
 
 function yourAnswer(vals, s, r) {
-  let t;
-  if (!s.tsumo) t = vals.ron === null ? '—' : `${fmt(vals.ron)}点`;
-  else if (r.oya) t = vals.all === null ? '—' : `${fmt(vals.all)}点オール`;
-  else t = `${vals.ko === null ? '—' : fmt(vals.ko)} / ${vals.oya === null ? '—' : fmt(vals.oya)}点`;
-  if (st.level === 'full') t += `（${vals.fu ?? '—'}符${vals.han ?? '—'}翻）`;
-  return t;
+  const parts = [];
+  if (st.level !== 'points') parts.push(`${vals.fu ?? '—'}符`);
+  if (st.level !== 'fu') {
+    if (!s.tsumo) parts.push(vals.ron === null ? '—' : `${fmt(vals.ron)}点`);
+    else if (r.oya) parts.push(vals.all === null ? '—' : `${fmt(vals.all)}点オール`);
+    else parts.push(`${vals.ko === null ? '—' : fmt(vals.ko)} / ${vals.oya === null ? '—' : fmt(vals.oya)}点`);
+  }
+  return parts.join('・');
 }
 
 function calcText(r, s) {
@@ -438,9 +449,8 @@ function renderResult(ok, giveUp, vals, parts) {
   let yours = '';
   if (!giveUp && !ok) {
     const what = [];
-    if (!parts.ptsOk) what.push('点数');
-    if (!parts.hanOk) what.push('翻');
     if (!parts.fuOk) what.push('符');
+    if (!parts.ptsOk) what.push('点数');
     yours = `<div class="yours">あなたの回答：<span class="ngv">${yourAnswer(vals, s, r)}</span>　<span class="muted">（${what.join('・')}が違います）</span></div>`;
   }
 
@@ -455,15 +465,19 @@ function renderResult(ok, giveUp, vals, parts) {
     const sum = raw !== undefined && raw !== r.fu
       ? `<tr class="sum"><td>合計 ${raw}符 → ${r.fu}符${raw % 10 ? '（1の位は切り上げ）' : ''}</td><td class="r">${r.fu}符</td></tr>`
       : `<tr class="sum"><td>合計</td><td class="r">${r.fu}符</td></tr>`;
-    const waitNote = r.form === 'normal' ? `<div class="small muted" style="margin-top:4px">待ちの取り方：${M.WAIT_NAMES[r.wait]}${r.cls === 'yakuman' || r.han >= 5 ? '　／　満貫以上なので符は点数に影響しません' : ''}</div>` : '';
+    const waitNote = r.form === 'normal' ? `<div class="small muted" style="margin-top:4px">待ちの取り方：${M.WAIT_NAMES[r.wait]}</div>` : '';
     fuSec = `<div class="sec"><h3>符</h3><table>${rows}${sum}</table>${waitNote}</div>`;
   }
 
+  // 符の練習では、答えの見出しを符にして、符の内訳を先に出す
+  const fuFirst = st.level === 'fu';
+  const big = fuFirst ? `${r.fu}符` : correctText(r, s);
+  const small = fuFirst ? `${r.han}翻・${correctText(r, s)}${r.label ? '（' + r.label + '）' : ''}` : hanFuText(r);
+  const yakuSec = `<div class="sec"><h3>役</h3><table>${yakuRows}</table></div>`;
   $('result').innerHTML = `
-    <div class="verdict">${mark}<div><div class="sub">${head}（${who}）</div><div class="ans">${correctText(r, s)}</div><div class="sub">${hanFuText(r)}</div></div></div>
+    <div class="verdict">${mark}<div><div class="sub">${head}（${who}）</div><div class="ans">${big}</div><div class="sub">${small}</div></div></div>
     ${yours}
-    <div class="sec"><h3>役</h3><table>${yakuRows}</table></div>
-    ${fuSec}
+    ${st.level === 'points' ? yakuSec + fuSec : fuSec + yakuSec}
     <div class="sec"><h3>計算</h3><div class="calc">${calcText(r, s)}</div></div>
     <button type="button" class="btn primary next" id="next">次の問題</button>`;
   $('result').hidden = false;

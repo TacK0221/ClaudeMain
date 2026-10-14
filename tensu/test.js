@@ -99,11 +99,11 @@ check('槓子', hand('234m567p9s', '9s', { tsumo: true }, [['minkan', '7777z'], 
 
 console.log(`点数計算: ${pass} 件OK / ${fail} 件NG`);
 
-// 生成した問題がすべて和了形で、役がある
-for (const mode of ['practical', 'random']) {
+// 生成した問題がすべて和了形で、役があり、4翻以下
+for (const mode of ['practical', 'fu']) {
   const n = 3000;
-  const cls = {}, style = {}, tsumo = { t: 0 };
-  let bad = 0;
+  const fu = {}, style = {}, tags = {};
+  let bad = 0, tsumo = 0;
   const t0 = Date.now();
   for (let i = 0; i < n; i++) {
     const p = M.generate(mode);
@@ -111,14 +111,18 @@ for (const mode of ['practical', 'random']) {
     const counts = new Array(34).fill(0);
     for (const t of p.hand.closed.concat([p.hand.winTile], ...p.hand.melds.map(m => m.tiles), p.hand.sit.dora, p.hand.sit.ura)) counts[M.norm(t)]++;
     if (counts.some(c => c > 4) || p.hand.closed.length + 1 + p.hand.melds.length * 3 !== 14) { bad++; console.log('牌の枚数がおかしい', JSON.stringify(p.hand)); }
-    cls[p.result.cls] = (cls[p.result.cls] || 0) + 1;
+    if (p.result.han > 4 || p.result.yakumanMult) { bad++; console.log('5翻以上', p.result.han); }
+    const k = p.result.fu >= 100 ? '100+' : p.result.fu;
+    fu[k] = (fu[k] || 0) + 1;
     style[p.hand.style] = (style[p.hand.style] || 0) + 1;
-    if (p.hand.sit.tsumo) tsumo.t++;
+    for (const tg of p.result.tags) tags[tg] = (tags[tg] || 0) + 1;
+    if (p.hand.sit.tsumo) tsumo++;
   }
-  const pct = o => Object.entries(o).map(([k, v]) => `${k} ${(v / n * 100).toFixed(1)}%`).join(', ');
+  const pct = o => Object.entries(o).sort((a, b) => (parseInt(a[0]) || 0) - (parseInt(b[0]) || 0)).map(([k, v]) => `${k} ${(v / n * 100).toFixed(1)}%`).join(', ');
   console.log(`[${mode}] ${n}問 ${Date.now() - t0}ms  不正 ${bad}`);
-  console.log('  打点:', pct(cls));
-  console.log('  状態:', pct(style), ` ツモ ${(tsumo.t / n * 100).toFixed(1)}%`);
+  console.log('  符:', pct(fu));
+  console.log('  状態:', pct(style), ` ツモ ${(tsumo / n * 100).toFixed(1)}%`);
+  console.log('  分類:', Object.entries(tags).filter(([k]) => !/符$|^[親子]$|^ツモ$|^ロン$/.test(k)).map(([k, v]) => `${k} ${(v / n * 100).toFixed(0)}%`).join(', '));
   if (bad) fail++;
 }
 process.exit(fail ? 1 : 0);
