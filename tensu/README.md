@@ -9,6 +9,26 @@
 - スマホ: Netlify Drop（https://app.netlify.com/drop ）に `tensu` フォルダをドラッグして公開し、その URL を開く
   （スコア帳の `site` とは別のサイトとして公開します）
 
+## コマンドで最新版を手元にそろえる
+
+最初に1回だけ、Git をインストールして、このリポジトリをブランチを指定して取得します。
+
+```
+git clone -b claude/adoring-sagan-5gj26i https://github.com/tack0221/claudemain.git
+cd claudemain
+```
+
+あとは修正のたびに、次のコマンドを実行するだけで `dist/tensu` に公開用の3ファイル（`index.html`・`mahjong.js`・`tiles.js`）がそろいます。
+
+| OS | コマンド |
+|---|---|
+| Mac | `sh scripts/tensu-pull.sh` |
+| Windows | `scripts\tensu-pull.bat` |
+
+- 末尾に `--deploy` を付けると、そろえたあと Netlify にも公開します（Node.js が必要。初回はブラウザで Netlify へのログインと、公開先サイトの選択を聞かれます）
+- 手元でファイルを書き換えていると、上書きしないように中止します
+- `dist/` は Git の管理対象外です
+
 ## 出題
 
 実戦でよく出る手（立直・平和・タンヤオ・役牌）から出題します。30符・40符が中心で、待ちは両面が6割ほどです。
