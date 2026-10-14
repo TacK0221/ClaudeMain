@@ -148,11 +148,11 @@ details.rules ul{margin:8px 0 0;padding-left:1.2em;font-size:13.5px}
         </div>
       </div>
       <div class="sw-group">
-        <span class="sw-label">答え方</span>
-        <div class="seg" id="level-seg" role="group" aria-label="答え方">
-          <button type="button" data-level="fu">符</button>
-          <button type="button" data-level="fupts">符＋点数</button>
-          <button type="button" data-level="points">点数</button>
+        <span class="sw-label">親・子</span>
+        <div class="seg" id="seat-seg" role="group" aria-label="親・子">
+          <button type="button" data-seat="ko">子</button>
+          <button type="button" data-seat="oya">親</button>
+          <button type="button" data-seat="both">両方</button>
         </div>
       </div>
     </div>
@@ -188,7 +188,7 @@ details.rules ul{margin:8px 0 0;padding-left:1.2em;font-size:13.5px}
         <li>連風牌（ダブ東など）の雀頭は4符</li>
         <li>平和ツモは20符、七対子は25符。副露して20符になる手は30符</li>
         <li>本場・供託は無し。点数は和了した人が受け取る点数で答えます</li>
-        <li>ツモは「子の支払い / 親の支払い」、親のツモは「◯点オール」</li>
+        <li>答えは点数。ツモは「子の支払い / 親の支払い」、親のツモは「◯点オール」</li>
         <li>待ちの取り方が複数あるときは、点数が一番高くなる取り方が正解</li>
         <li>出題の頻度（実戦モード）は天鳳などの和了統計を目安にした近似値です</li>
       </ul>
@@ -211,17 +211,18 @@ const MODE_NOTES = {
   fu: '刻子・槓子・嵌張/辺張/単騎を多めにして、20符〜80符以上まで満遍なく出題します',
   weak: '間違えたことのある分類（暗刻・么九牌の刻子・単騎などの待ち・シャンポンのロンなど）を優先して出題します',
 };
-const LEVELS = ['fu', 'fupts', 'points'];
+const SEATS = ['ko', 'oya', 'both'];
 
 // 保存（端末のブラウザにだけ残る。使えない環境でも動くように try で囲む）
 function load() {
-  const base = { ver: 2, mode: 'fu', level: 'fu', total: 0, correct: 0, streak: 0, best: 0, tags: {} };
+  const base = { ver: 2, mode: 'fu', seat: 'both', total: 0, correct: 0, streak: 0, best: 0, tags: {} };
   let v;
   try { v = Object.assign({}, base, JSON.parse(localStorage.getItem(STORE) || '{}')); } catch (e) { return base; }
   // 前の版（役・打点の分類）からは、分類の記録だけ消して符の分類に切り替える
-  if (v.ver !== 2) Object.assign(v, { ver: 2, tags: {}, mode: 'fu', level: 'fu' });
+  if (v.ver !== 2) Object.assign(v, { ver: 2, tags: {}, mode: 'fu' });
   if (!MODE_NOTES[v.mode]) v.mode = 'fu';
-  if (!LEVELS.includes(v.level)) v.level = 'fu';
+  if (!SEATS.includes(v.seat)) v.seat = 'both';
+  delete v.level;
   return v;
 }
 function save() { try { localStorage.setItem(STORE, JSON.stringify(st)); } catch (e) { /* 保存できなくても続ける */ } }
@@ -302,13 +303,10 @@ function field(id, label, unit) {
 }
 function renderFields() {
   const s = cur.hand.sit, oya = s.seatWind === 27;
-  let html = '';
-  if (st.level !== 'points') html += field('a-fu', '符', '符');
-  if (st.level !== 'fu') {
-    if (!s.tsumo) html += field('a-ron', '点数（ロン）', '点');
-    else if (oya) html += field('a-all', '各家の支払い', '点オール');
-    else html += field('a-ko', '子の支払い', '点') + field('a-oya', '親の支払い', '点');
-  }
+  let html;
+  if (!s.tsumo) html = field('a-ron', '点数（ロン）', '点');
+  else if (oya) html = field('a-all', '各家の支払い', '点オール');
+  else html = field('a-ko', '子の支払い', '点') + field('a-oya', '親の支払い', '点');
   $('fields').innerHTML = html;
   const first = $('fields').querySelector('input');
   // スマホでは自動でキーボードを出さない（問題が隠れるため）
@@ -324,7 +322,7 @@ const numVal = id => {
 
 /* ---------- 出題 ---------- */
 function weakAccept() {
-  const entries = Object.entries(st.tags).filter(([, v]) => v.miss > 0);
+  const entries = Object.entries(st.tags).filter(([k, v]) => v.miss > 0 && !(st.seat !== 'both' && (k === '親' || k === '子')));
   if (!entries.length) return null;
   // 間違えた割合が高い分類ほど選ばれやすい
   const weights = {};
@@ -336,19 +334,21 @@ function weakAccept() {
   return { tag, fn: (h, res) => res.tags.includes(tag) };
 }
 
+const seatOpt = () => (st.seat === 'both' ? null : st.seat);
+
 function newProblem() {
   note = '';
   if (st.mode === 'weak') {
     const w = weakAccept();
     let p = null;
     if (w) {
-      p = M.generate('fu', w.fn) || M.generate('practical', w.fn);
+      p = M.generate('fu', w.fn, seatOpt()) || M.generate('practical', w.fn, seatOpt());
       if (p) note = `苦手な分類「${w.tag}」から出題`;
     }
-    if (!p) { note = w ? `「${w.tag}」の問題を作れなかったので実戦モードで出題` : 'まだ間違えた問題がないので、実戦モードで出題しています'; p = M.generate('practical'); }
+    if (!p) { note = w ? `「${w.tag}」の問題を作れなかったので実戦モードで出題` : 'まだ間違えた問題がないので、実戦モードで出題しています'; p = M.generate('practical', null, seatOpt()); }
     cur = p;
   } else {
-    cur = M.generate(st.mode);
+    cur = M.generate(st.mode, null, seatOpt());
   }
   answered = false;
   renderProblem();
@@ -374,23 +374,17 @@ function hanFuText(r) {
 function judge(giveUp) {
   if (answered) return;
   const r = cur.result, s = cur.hand.sit;
-  const vals = { ron: numVal('a-ron'), all: numVal('a-all'), ko: numVal('a-ko'), oya: numVal('a-oya'), fu: numVal('a-fu') };
-  const askFu = st.level !== 'points', askPts = st.level !== 'fu';
+  const vals = { ron: numVal('a-ron'), all: numVal('a-all'), ko: numVal('a-ko'), oya: numVal('a-oya') };
   if (!giveUp) {
-    const need = [];
-    if (askFu) need.push('fu');
-    if (askPts) need.push(...(!s.tsumo ? ['ron'] : (r.oya ? ['all'] : ['ko', 'oya'])));
+    const need = !s.tsumo ? ['ron'] : (r.oya ? ['all'] : ['ko', 'oya']);
     const missing = need.find(k => vals[k] === null);
     if (missing) { $('a-' + missing).focus(); return; }
   }
-  let ptsOk = true, fuOk = true;
-  if (askPts) {
-    if (!s.tsumo) ptsOk = vals.ron === r.pay.ron;
-    else if (r.oya) ptsOk = vals.all === r.pay.all;
-    else ptsOk = vals.ko === r.pay.ko && vals.oya === r.pay.oya;
-  }
-  if (askFu) fuOk = vals.fu === r.fu;
-  const ok = !giveUp && ptsOk && fuOk;
+  let ok;
+  if (!s.tsumo) ok = vals.ron === r.pay.ron;
+  else if (r.oya) ok = vals.all === r.pay.all;
+  else ok = vals.ko === r.pay.ko && vals.oya === r.pay.oya;
+  ok = ok && !giveUp;
   answered = true;
 
   st.total++;
@@ -403,18 +397,13 @@ function judge(giveUp) {
   }
   save();
   renderStats();
-  renderResult(ok, giveUp, vals, { ptsOk, fuOk });
+  renderResult(ok, giveUp, vals);
 }
 
 function yourAnswer(vals, s, r) {
-  const parts = [];
-  if (st.level !== 'points') parts.push(`${vals.fu ?? '—'}符`);
-  if (st.level !== 'fu') {
-    if (!s.tsumo) parts.push(vals.ron === null ? '—' : `${fmt(vals.ron)}点`);
-    else if (r.oya) parts.push(vals.all === null ? '—' : `${fmt(vals.all)}点オール`);
-    else parts.push(`${vals.ko === null ? '—' : fmt(vals.ko)} / ${vals.oya === null ? '—' : fmt(vals.oya)}点`);
-  }
-  return parts.join('・');
+  if (!s.tsumo) return vals.ron === null ? '—' : `${fmt(vals.ron)}点`;
+  if (r.oya) return vals.all === null ? '—' : `${fmt(vals.all)}点オール`;
+  return `${vals.ko === null ? '—' : fmt(vals.ko)} / ${vals.oya === null ? '—' : fmt(vals.oya)}点`;
 }
 
 function calcText(r, s) {
@@ -440,7 +429,7 @@ function calcText(r, s) {
   return lines.join('<br>');
 }
 
-function renderResult(ok, giveUp, vals, parts) {
+function renderResult(ok, giveUp, vals) {
   const r = cur.result, s = cur.hand.sit;
   const mark = giveUp ? '<span class="mark skip" aria-hidden="true">？</span>' : (ok ? '<span class="mark ok" aria-hidden="true">○</span>' : '<span class="mark ng" aria-hidden="true">×</span>');
   const head = giveUp ? '答え' : (ok ? '正解' : '不正解');
@@ -448,10 +437,7 @@ function renderResult(ok, giveUp, vals, parts) {
 
   let yours = '';
   if (!giveUp && !ok) {
-    const what = [];
-    if (!parts.fuOk) what.push('符');
-    if (!parts.ptsOk) what.push('点数');
-    yours = `<div class="yours">あなたの回答：<span class="ngv">${yourAnswer(vals, s, r)}</span>　<span class="muted">（${what.join('・')}が違います）</span></div>`;
+    yours = `<div class="yours">あなたの回答：<span class="ngv">${yourAnswer(vals, s, r)}</span></div>`;
   }
 
   const yakuRows = r.yakuman.length
@@ -469,15 +455,14 @@ function renderResult(ok, giveUp, vals, parts) {
     fuSec = `<div class="sec"><h3>符</h3><table>${rows}${sum}</table>${waitNote}</div>`;
   }
 
-  // 符の練習では、答えの見出しを符にして、符の内訳を先に出す
-  const fuFirst = st.level === 'fu';
-  const big = fuFirst ? `${r.fu}符` : correctText(r, s);
-  const small = fuFirst ? `${r.han}翻・${correctText(r, s)}${r.label ? '（' + r.label + '）' : ''}` : hanFuText(r);
+  // 符の練習が目的なので、符の内訳を役より先に出す
+  const big = correctText(r, s);
+  const small = hanFuText(r);
   const yakuSec = `<div class="sec"><h3>役</h3><table>${yakuRows}</table></div>`;
   $('result').innerHTML = `
     <div class="verdict">${mark}<div><div class="sub">${head}（${who}）</div><div class="ans">${big}</div><div class="sub">${small}</div></div></div>
     ${yours}
-    ${st.level === 'points' ? yakuSec + fuSec : fuSec + yakuSec}
+    ${fuSec}${yakuSec}
     <div class="sec"><h3>計算</h3><div class="calc">${calcText(r, s)}</div></div>
     <button type="button" class="btn primary next" id="next">次の問題</button>`;
   $('result').hidden = false;
@@ -507,16 +492,15 @@ function renderStats() {
 /* ---------- 切り替え ---------- */
 function syncSegs() {
   document.querySelectorAll('#mode-seg button').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.mode === st.mode)));
-  document.querySelectorAll('#level-seg button').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.level === st.level)));
+  document.querySelectorAll('#seat-seg button').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.seat === st.seat)));
 }
 $('mode-seg').addEventListener('click', e => {
   const b = e.target.closest('button'); if (!b) return;
   st.mode = b.dataset.mode; save(); syncSegs(); newProblem();
 });
-$('level-seg').addEventListener('click', e => {
+$('seat-seg').addEventListener('click', e => {
   const b = e.target.closest('button'); if (!b) return;
-  st.level = b.dataset.level; save(); syncSegs();
-  if (!answered) renderFields();
+  st.seat = b.dataset.seat; save(); syncSegs(); newProblem();
 });
 $('answer').addEventListener('submit', e => { e.preventDefault(); judge(false); });
 $('giveup').addEventListener('click', () => judge(true));

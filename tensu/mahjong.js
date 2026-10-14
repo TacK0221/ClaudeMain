@@ -434,6 +434,7 @@ const FU = Object.assign({}, PRACTICAL, {
 });
 
 let K = PRACTICAL; // 生成中の設定（面子の選び方で使う）
+let SEAT = null;   // 'oya' | 'ko' | null（どちらも）
 
 const SHUN_STARTS = []; for (const b of [0, 9, 18]) for (let n = 0; n < 7; n++) SHUN_STARTS.push(b + n);
 const ALL_TILES = Array.from({ length: 34 }, (_, i) => i);
@@ -535,7 +536,8 @@ const groupTileList = g => (g.type === 'shuntsu' ? [g.tile, g.tile + 1, g.tile +
 
 function makeSituation(cfg, style) {
   const roundWind = +pickWeighted(cfg.roundWind);
-  const seatWind = 27 + randInt(4);
+  // 親(東家)・子(南西北家)の指定があればそれに合わせる
+  const seatWind = SEAT === 'oya' ? 27 : SEAT === 'ko' ? 28 + randInt(3) : 27 + randInt(4);
   const tsumo = rand() < cfg.tsumo[style];
   const s = { roundWind, seatWind, tsumo, riichi: 0, ippatsu: false, haitei: false, houtei: false, rinshan: false, chankan: false, dora: [], ura: [] };
   if (style === 'riichi') {
@@ -688,10 +690,12 @@ function applyDora(hand, cfg) {
 }
 
 /* 問題を1つ作る。mode: 'practical'（実戦） | 'fu'（符いろいろ）
- * 4翻以下・役満なしの手だけを出す。accept(hand, result) を渡すと、条件に合う問題が出るまで作り直す（苦手モード用） */
-function generate(mode, accept) {
+ * 4翻以下・役満なしの手だけを出す。accept(hand, result) を渡すと、条件に合う問題が出るまで作り直す（苦手モード用）
+ * seat: 'oya' | 'ko' で親・子を固定（省略するとどちらも出る） */
+function generate(mode, accept, seat) {
   const cfg = mode === 'fu' ? FU : PRACTICAL;
   K = cfg;
+  SEAT = seat || null;
   const target = cfg.fuTargets && !accept ? +pickWeighted(cfg.fuTargets) : null;
   let fallback = null;
   const limit = accept ? 4000 : 1500;
@@ -707,7 +711,7 @@ function generate(mode, accept) {
     if (!fallback || gap < fallback.gap) fallback = { hand, result, gap };
   }
   if (fallback) return { hand: fallback.hand, result: fallback.result };
-  return accept ? null : generate(mode);
+  return accept ? null : generate(mode, null, seat);
 }
 
 const api = {
