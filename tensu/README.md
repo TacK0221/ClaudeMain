@@ -11,11 +11,13 @@
 
 ## 最新版を手元にそろえる（Windows）
 
-最初に1回だけ、デスクトップにこのブランチを取得します（スコア帳の `mahjong-score-web` とは別のフォルダにする）。
+最初に1回だけ、デスクトップにこのブランチの `tensu` フォルダだけを取得します（スコア帳の `mahjong-score-web` とは別のフォルダにする。スコア帳の `site` などは取ってこない）。
 
 ```
 cd "C:\Users\takay\OneDrive\デスクトップ"
-git clone -b claude/adoring-sagan-5gj26i https://github.com/tack0221/claudemain.git mahjong-tensu
+git clone -b claude/adoring-sagan-5gj26i --sparse https://github.com/tack0221/claudemain.git mahjong-tensu
+cd mahjong-tensu
+git sparse-checkout set tensu
 ```
 
 修正のたびに、次を実行してから `mahjong-tensu` の中の `tensu` フォルダを Netlify Drop にドラッグします。
