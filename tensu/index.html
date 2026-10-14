@@ -57,6 +57,7 @@ h2{font-family:var(--display);font-size:18px;margin:0 0 8px}
 .chip{display:inline-flex;align-items:center;gap:4px;padding:3px 9px;border-radius:999px;background:rgba(255,255,255,.12);font-size:13px;font-weight:500;white-space:nowrap}
 .chip.strong{background:var(--felt-ink);color:var(--felt-deep);font-weight:700}
 .chip.event{background:#f2c14e;color:#3a2a00;font-weight:700}
+.chip.calm{background:transparent;box-shadow:inset 0 0 0 1.5px rgba(255,255,255,.75);font-weight:700}
 .doras{display:flex;flex-wrap:wrap;gap:6px 16px;align-items:center;font-size:12.5px}
 .doras .lbl{opacity:.85;margin-right:4px}
 .dora-set{display:inline-flex;align-items:center;gap:2px}
@@ -300,6 +301,9 @@ function renderProblem() {
   chips.push(`<span class="chip strong">${s.tsumo ? 'ツモ' : 'ロン'}</span>`);
   if (s.riichi === 2) chips.push('<span class="chip event">ダブル立直</span>');
   else if (s.riichi) chips.push('<span class="chip event">立直</span>');
+  // 立直していないことも見落とさないよう、必ず表示する
+  else if (hand.melds.some(m => m.type !== 'ankan')) chips.push('<span class="chip calm">副露（立直なし）</span>');
+  else chips.push('<span class="chip calm">ダマ（立直なし）</span>');
   if (s.ippatsu) chips.push('<span class="chip event">一発</span>');
   if (s.haitei) chips.push('<span class="chip event">海底（最後のツモ）</span>');
   if (s.houtei) chips.push('<span class="chip event">河底（最後の捨て牌）</span>');
