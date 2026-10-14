@@ -41,8 +41,9 @@ body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--body);font
 .card{background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:14px}
 .muted{color:var(--muted)} .small{font-size:12.5px}
 h2{font-family:var(--display);font-size:18px;margin:0 0 8px}
-.controls{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:10px}
-@media (max-width:420px){.controls{grid-template-columns:minmax(0,1fr)}}
+.controls{display:grid;grid-template-columns:minmax(0,1.3fr) minmax(0,1fr) minmax(0,1fr);gap:10px}
+/* 狭い画面では「出題」を1段目に広く、「親・子」「答え方」を2段目に並べる */
+@media (max-width:560px){.controls{grid-template-columns:minmax(0,1fr) minmax(0,1fr)}.controls .wide{grid-column:1 / -1}}
 .sw-group{display:flex;flex-direction:column;gap:4px;min-width:0}
 .sw-label{font-size:11.5px;color:var(--muted);letter-spacing:.06em}
 .seg{display:flex;background:var(--seg);border:1px solid var(--line);border-radius:9px;padding:3px;gap:3px}
@@ -81,6 +82,17 @@ h2{font-family:var(--display);font-size:18px;margin:0 0 8px}
 /* 回答 */
 .answer{display:flex;flex-direction:column;gap:10px}
 .fields{display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:10px}
+/* 4択 */
+.choices{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+.fields.is-choice{display:flex;flex-direction:column;gap:8px}
+.choice-hint{font-size:12.5px;color:var(--muted)}
+.choice{display:flex;align-items:center;gap:10px;min-height:58px;padding:10px 12px;border:1px solid var(--line);border-radius:10px;background:var(--surface);color:var(--ink);font:inherit;cursor:pointer;text-align:left}
+.choice:hover{border-color:var(--felt)}
+.choice:focus-visible{outline:2px solid var(--felt);outline-offset:2px}
+.choice .no{flex:none;display:grid;place-items:center;width:22px;height:22px;border-radius:50%;background:var(--sunk);color:var(--muted);font-size:12px;font-weight:700}
+.choice .v{font-family:var(--display);font-weight:800;font-size:19px;line-height:1.2;font-variant-numeric:tabular-nums;min-width:0}
+.choice .v.pair{display:grid;gap:2px;font-size:17px}
+.choice .v.pair small{font-family:var(--body);font-weight:500;font-size:11.5px;color:var(--muted);margin-right:4px}
 label.f{display:flex;flex-direction:column;gap:4px;font-size:12.5px;color:var(--muted);min-width:0}
 .inp{display:flex;align-items:center;background:var(--surface);border:1px solid var(--line);border-radius:8px;padding-right:10px}
 .inp:focus-within{outline:2px solid var(--felt);outline-offset:1px}
@@ -139,7 +151,7 @@ details.rules ul{margin:8px 0 0;padding-left:1.2em;font-size:13.5px}
 <main class="wrap">
   <section class="card">
     <div class="controls">
-      <div class="sw-group">
+      <div class="sw-group wide">
         <span class="sw-label">出題</span>
         <div class="seg" id="mode-seg" role="group" aria-label="出題モード">
           <button type="button" data-mode="practical">実戦</button>
@@ -155,6 +167,13 @@ details.rules ul{margin:8px 0 0;padding-left:1.2em;font-size:13.5px}
           <button type="button" data-seat="both">両方</button>
         </div>
       </div>
+      <div class="sw-group">
+        <span class="sw-label">答え方</span>
+        <div class="seg" id="input-seg" role="group" aria-label="答え方">
+          <button type="button" data-input="choice">4択</button>
+          <button type="button" data-input="type">入力</button>
+        </div>
+      </div>
     </div>
     <div class="mode-note" id="mode-note"></div>
   </section>
@@ -164,7 +183,7 @@ details.rules ul{margin:8px 0 0;padding-left:1.2em;font-size:13.5px}
   <form class="card answer" id="answer" autocomplete="off">
     <div class="fields" id="fields"></div>
     <div class="btns">
-      <button type="submit" class="btn primary">答え合わせ</button>
+      <button type="submit" class="btn primary" id="submit">答え合わせ</button>
       <button type="button" class="btn ghost" id="giveup">わからない</button>
     </div>
   </form>
@@ -188,7 +207,8 @@ details.rules ul{margin:8px 0 0;padding-left:1.2em;font-size:13.5px}
         <li>連風牌（ダブ東など）の雀頭は4符</li>
         <li>平和ツモは20符、七対子は25符。副露して20符になる手は30符</li>
         <li>本場・供託は無し。点数は和了した人が受け取る点数で答えます</li>
-        <li>答えは点数。ツモは「子の支払い / 親の支払い」、親のツモは「◯点オール」</li>
+        <li>答えは点数。4択か入力を選べます。ツモは「子の支払い / 親の支払い」、親のツモは「◯点オール」</li>
+        <li>4択の間違いの選択肢は、符を10符ずらす・翻を1つずらす・切り上げ満貫を忘れる・親子を取り違えるなど、よくある間違い方で計算した点数です</li>
         <li>待ちの取り方が複数あるときは、点数が一番高くなる取り方が正解</li>
         <li>出題の頻度（実戦モード）は天鳳などの和了統計を目安にした近似値です</li>
       </ul>
@@ -212,16 +232,18 @@ const MODE_NOTES = {
   weak: '間違えたことのある分類（暗刻・么九牌の刻子・単騎などの待ち・シャンポンのロンなど）を優先して出題します',
 };
 const SEATS = ['ko', 'oya', 'both'];
+const INPUTS = ['choice', 'type'];
 
 // 保存（端末のブラウザにだけ残る。使えない環境でも動くように try で囲む）
 function load() {
-  const base = { ver: 2, mode: 'fu', seat: 'both', total: 0, correct: 0, streak: 0, best: 0, tags: {} };
+  const base = { ver: 2, mode: 'fu', seat: 'both', input: 'choice', total: 0, correct: 0, streak: 0, best: 0, tags: {} };
   let v;
   try { v = Object.assign({}, base, JSON.parse(localStorage.getItem(STORE) || '{}')); } catch (e) { return base; }
   // 前の版（役・打点の分類）からは、分類の記録だけ消して符の分類に切り替える
   if (v.ver !== 2) Object.assign(v, { ver: 2, tags: {}, mode: 'fu' });
   if (!MODE_NOTES[v.mode]) v.mode = 'fu';
   if (!SEATS.includes(v.seat)) v.seat = 'both';
+  if (!INPUTS.includes(v.input)) v.input = 'choice';
   delete v.level;
   return v;
 }
@@ -301,8 +323,23 @@ function renderProblem() {
 function field(id, label, unit) {
   return `<label class="f">${label}<span class="inp"><input id="${id}" inputmode="numeric" pattern="[0-9]*" enterkeyhint="done"><span>${unit}</span></span></label>`;
 }
+// 子のツモは「子 ◯◯ / 親 ◯◯」を2行で見せる（スマホ幅でもはみ出さないように）
+const choiceFace = (p) => (p.ko
+  ? `<span class="v pair" aria-label="子 ${fmt(p.ko)}点、親 ${fmt(p.oya)}点"><span><small>子</small>${fmt(p.ko)}</span><span><small>親</small>${fmt(p.oya)}</span></span>`
+  : `<span class="v">${payText(p)}</span>`);
+const payText = (p) => (p.ron ? `${fmt(p.ron)}点` : p.all ? `${fmt(p.all)}点オール` : `${fmt(p.ko)} / ${fmt(p.oya)}点`);
+
 function renderFields() {
   const s = cur.hand.sit, oya = s.seatWind === 27;
+  $('submit').hidden = st.input === 'choice';
+  $('fields').classList.toggle('is-choice', st.input === 'choice');
+  if (st.input === 'choice') {
+    const hint = !s.tsumo ? 'ロンの点数' : oya ? '親のツモ（各家の支払い）' : '子のツモ（子 / 親の支払い）';
+    $('fields').innerHTML = `<div class="choice-hint">${hint}を選んでください</div><div class="choices">`
+      + cur.choices.map((c, i) => `<button type="button" class="choice" data-i="${i}"><span class="no" aria-hidden="true">${i + 1}</span>${choiceFace(c.pay)}</button>`).join('')
+      + '</div>';
+    return;
+  }
   let html;
   if (!s.tsumo) html = field('a-ron', '点数（ロン）', '点');
   else if (oya) html = field('a-all', '各家の支払い', '点オール');
@@ -350,6 +387,7 @@ function newProblem() {
   } else {
     cur = M.generate(st.mode, null, seatOpt());
   }
+  cur.choices = M.choices(cur.result, cur.hand.sit);
   answered = false;
   renderProblem();
   renderFields();
@@ -371,11 +409,14 @@ function hanFuText(r) {
   return r.label ? `${hf}・${r.label}` : hf;
 }
 
-function judge(giveUp) {
+// picked: 4択で選んだ選択肢（入力のときは undefined）
+function judge(giveUp, picked) {
   if (answered) return;
   const r = cur.result, s = cur.hand.sit;
-  const vals = { ron: numVal('a-ron'), all: numVal('a-all'), ko: numVal('a-ko'), oya: numVal('a-oya') };
-  if (!giveUp) {
+  const vals = picked
+    ? { ron: picked.pay.ron ?? null, all: picked.pay.all ?? null, ko: picked.pay.ko ?? null, oya: picked.pay.oya ?? null }
+    : { ron: numVal('a-ron'), all: numVal('a-all'), ko: numVal('a-ko'), oya: numVal('a-oya') };
+  if (!giveUp && !picked) {
     const need = !s.tsumo ? ['ron'] : (r.oya ? ['all'] : ['ko', 'oya']);
     const missing = need.find(k => vals[k] === null);
     if (missing) { $('a-' + missing).focus(); return; }
@@ -397,7 +438,7 @@ function judge(giveUp) {
   }
   save();
   renderStats();
-  renderResult(ok, giveUp, vals);
+  renderResult(ok, giveUp, vals, picked);
 }
 
 function yourAnswer(vals, s, r) {
@@ -429,7 +470,7 @@ function calcText(r, s) {
   return lines.join('<br>');
 }
 
-function renderResult(ok, giveUp, vals) {
+function renderResult(ok, giveUp, vals, picked) {
   const r = cur.result, s = cur.hand.sit;
   const mark = giveUp ? '<span class="mark skip" aria-hidden="true">？</span>' : (ok ? '<span class="mark ok" aria-hidden="true">○</span>' : '<span class="mark ng" aria-hidden="true">×</span>');
   const head = giveUp ? '答え' : (ok ? '正解' : '不正解');
@@ -437,7 +478,8 @@ function renderResult(ok, giveUp, vals) {
 
   let yours = '';
   if (!giveUp && !ok) {
-    yours = `<div class="yours">あなたの回答：<span class="ngv">${yourAnswer(vals, s, r)}</span></div>`;
+    const why = picked && picked.why ? `　<span class="muted">（${picked.why}）</span>` : '';
+    yours = `<div class="yours">あなたの回答：<span class="ngv">${yourAnswer(vals, s, r)}</span>${why}</div>`;
   }
 
   const yakuRows = r.yakuman.length
@@ -493,6 +535,7 @@ function renderStats() {
 function syncSegs() {
   document.querySelectorAll('#mode-seg button').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.mode === st.mode)));
   document.querySelectorAll('#seat-seg button').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.seat === st.seat)));
+  document.querySelectorAll('#input-seg button').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.input === st.input)));
 }
 $('mode-seg').addEventListener('click', e => {
   const b = e.target.closest('button'); if (!b) return;
@@ -502,7 +545,23 @@ $('seat-seg').addEventListener('click', e => {
   const b = e.target.closest('button'); if (!b) return;
   st.seat = b.dataset.seat; save(); syncSegs(); newProblem();
 });
-$('answer').addEventListener('submit', e => { e.preventDefault(); judge(false); });
+$('answer').addEventListener('submit', e => { e.preventDefault(); if (st.input === 'type') judge(false); });
+$('fields').addEventListener('click', e => {
+  const b = e.target.closest('.choice'); if (!b) return;
+  judge(false, cur.choices[+b.dataset.i]);
+});
+// 4択は数字キー 1〜4 でも選べる
+document.addEventListener('keydown', e => {
+  if (st.input !== 'choice' || answered || e.altKey || e.ctrlKey || e.metaKey) return;
+  if (e.target.closest && e.target.closest('input')) return;
+  const i = '1234'.indexOf(e.key);
+  if (i >= 0 && cur.choices[i]) { e.preventDefault(); judge(false, cur.choices[i]); }
+});
+$('input-seg').addEventListener('click', e => {
+  const b = e.target.closest('button'); if (!b) return;
+  st.input = b.dataset.input; save(); syncSegs();
+  if (!answered) renderFields();
+});
 $('giveup').addEventListener('click', () => judge(true));
 // リセットは2回押しで確定（確認ダイアログが出ない環境でも使えるように）
 let resetTimer = null;

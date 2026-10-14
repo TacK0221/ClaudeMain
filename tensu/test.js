@@ -112,6 +112,9 @@ for (const mode of ['practical', 'fu']) {
     for (const t of p.hand.closed.concat([p.hand.winTile], ...p.hand.melds.map(m => m.tiles), p.hand.sit.dora, p.hand.sit.ura)) counts[M.norm(t)]++;
     if (counts.some(c => c > 4) || p.hand.closed.length + 1 + p.hand.melds.length * 3 !== 14) { bad++; console.log('牌の枚数がおかしい', JSON.stringify(p.hand)); }
     if (p.result.han > 4 || p.result.yakumanMult) { bad++; console.log('5翻以上', p.result.han); }
+    const ch = M.choices(p.result, p.hand.sit);
+    const keys = new Set(ch.map(c => JSON.stringify(c.pay)));
+    if (ch.length !== 4 || keys.size !== 4 || ch.filter(c => c.correct).length !== 1) { bad++; console.log('4択がおかしい', JSON.stringify(ch)); }
     const k = p.result.fu >= 100 ? '100+' : p.result.fu;
     fu[k] = (fu[k] || 0) + 1;
     style[p.hand.style] = (style[p.hand.style] || 0) + 1;

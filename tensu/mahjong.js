@@ -714,10 +714,56 @@ function generate(mode, accept, seat) {
   return accept ? null : generate(mode, null, seat);
 }
 
+/* 4択の選択肢。正解と、よくある間違い方をした点数3つを返す
+ * 間違い方: 符を10符ずらす・翻を1つずらす・切り上げ満貫を忘れる・ロンで親子を取り違える・符を20符ずらす */
+function payKey(p) { return p.ron ? `r${p.ron}` : p.all ? `a${p.all}` : `k${p.ko}/${p.oya}`; }
+function choices(result, sit) {
+  const r = result;
+  const pay = (han, fu, oya, noKiriage) => {
+    let base = basePoints(han, fu, 0);
+    if (noKiriage && han <= 4) base = Math.min(fu * Math.pow(2, han + 2), 2000);
+    return payments(base, oya, sit.tsumo);
+  };
+  const shuffle = arr => { for (let i = arr.length - 1; i > 0; i--) { const j = randInt(i + 1); [arr[i], arr[j]] = [arr[j], arr[i]]; } return arr; };
+  const fuOk = f => f >= 20 && f <= 110;
+  // 近い間違いほど前に置く（同じグループの中は毎回順番を変える）
+  const near = [];
+  for (const d of [-10, 10]) if (fuOk(r.fu + d)) near.push({ pay: pay(r.han, r.fu + d, r.oya), why: `${r.fu + d}符で計算した点数` });
+  if (r.form === 'chiitoi') near.push({ pay: pay(r.han, 30, r.oya), why: '30符で計算した点数' });
+  if (r.cls === 'mangan' && r.fu * Math.pow(2, r.han + 2) < 2000) near.push({ pay: pay(r.han, r.fu, r.oya, true), why: '切り上げ満貫を忘れた点数' });
+  const mid = [];
+  for (const d of [-1, 1]) if (r.han + d >= 1) mid.push({ pay: pay(r.han + d, r.fu, r.oya), why: `${r.han + d}翻で計算した点数` });
+  if (!sit.tsumo) mid.push({ pay: pay(r.han, r.fu, !r.oya), why: `${r.oya ? '子' : '親'}として計算した点数` });
+  const far = [];
+  for (const d of [-20, 20, 30]) if (fuOk(r.fu + d)) far.push({ pay: pay(r.han, r.fu + d, r.oya), why: `${r.fu + d}符で計算した点数` });
+  far.push({ pay: pay(r.han + 1, r.fu + 10, r.oya), why: '翻も符も多く数えた点数' });
+  // 満貫になる手は符をずらしても同じ点数になりやすいので、翻を大きくずらした点数も候補にする
+  for (const d of [-2, 2]) if (r.han + d >= 1) far.push({ pay: pay(r.han + d, r.fu, r.oya), why: `${r.han + d}翻で計算した点数` });
+  for (const df of [-10, 10]) if (r.han > 1 && fuOk(r.fu + df)) far.push({ pay: pay(r.han - 1, r.fu + df, r.oya), why: `${r.han - 1}翻${r.fu + df}符で計算した点数` });
+  const seen = new Set([payKey(r.pay)]);
+  const wrong = [];
+  for (const c of shuffle(near).concat(shuffle(mid), shuffle(far))) {
+    const k = payKey(c.pay);
+    if (seen.has(k)) continue;
+    seen.add(k);
+    wrong.push(c);
+    if (wrong.length === 3) break;
+  }
+  // まだ3つにならないとき（高い符の満貫など）は、翻を下げて符も下げた点数で埋める
+  for (let h = r.han - 1; h >= 1 && wrong.length < 3; h--) {
+    for (let f = r.fu - 10; f >= 20 && wrong.length < 3; f -= 10) {
+      const c = { pay: pay(h, f, r.oya), why: `${h}翻${f}符で計算した点数` };
+      const k = payKey(c.pay);
+      if (!seen.has(k)) { seen.add(k); wrong.push(c); }
+    }
+  }
+  return shuffle([{ pay: r.pay, correct: true }].concat(wrong));
+}
+
 const api = {
   RULES, WAIT_NAMES, PRACTICAL, FU, MAX_HAN,
   norm, isRed, isHonor, suitOf, numOf, tileName, doraFromIndicator,
-  decompose, score, generate, basePoints, payments,
+  decompose, score, generate, basePoints, payments, choices,
   setRandom(f) { rand = f; },
 };
 if (typeof module !== 'undefined' && module.exports) module.exports = api;
