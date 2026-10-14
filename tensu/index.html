@@ -14,7 +14,7 @@
 :root{
   --bg:#eaefeb; --surface:#fbfcfa; --sunk:#dfe6e1; --ink:#14221c; --muted:#5a6a62; --line:#cdd7d0;
   --felt:#11563d; --felt-deep:#0c4430; --felt-ink:#f4f8f5; --tile:#f6f1e2; --tile-edge:#d8cfb4; --tile-back:#e0a43a;
-  --man:#1d2a24; --man-suit:#b3261e; --pin:#1f5fae; --sou:#1b7a43; --aka:#d0201a; --chun:#c0211b; --hatsu:#17784a; --haku:#7d93b5;
+  --tb:#1d4f9c; --tg:#12764a; --tr:#c8251c; --tk:#1c1c1a; --logo:#b3261e;
   --pos:#0f6a49; --neg:#b4302a; --warn:#9a6a00;
   --seg:#dfe6e1; --seg-on:#fbfcfa;
   --display:"Shippori Mincho B1","Hiragino Mincho ProN","Yu Mincho",serif;
@@ -33,7 +33,7 @@
 body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--body);font-size:15px;line-height:1.55;-webkit-text-size-adjust:100%}
 .top{position:sticky;top:0;z-index:5;padding-top:env(safe-area-inset-top,0px);background:var(--felt-deep);color:var(--felt-ink)}
 .top-in{max-width:640px;margin:0 auto;padding-block:10px;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));display:flex;align-items:center;gap:10px}
-.logo{display:inline-grid;place-items:center;width:28px;height:36px;border-radius:5px;background:var(--tile);color:var(--man-suit);font-family:var(--display);font-weight:800;font-size:19px;box-shadow:0 2px 0 rgba(0,0,0,.3)}
+.logo{display:inline-grid;place-items:center;width:28px;height:36px;border-radius:5px;background:var(--tile);color:var(--logo);font-family:var(--display);font-weight:800;font-size:19px;box-shadow:0 2px 0 rgba(0,0,0,.3)}
 .brand{font-family:var(--display);font-weight:800;font-size:20px;letter-spacing:.04em}
 .score-mini{margin-left:auto;font-size:12.5px;text-align:right;line-height:1.3;opacity:.92;font-variant-numeric:tabular-nums}
 .score-mini b{font-size:15px}
@@ -64,20 +64,16 @@ h2{font-family:var(--display);font-size:18px;margin:0 0 8px}
 .win-lbl{font-size:11px;font-weight:700;background:#f2c14e;color:#3a2a00;border-radius:4px;padding:0 5px;line-height:1.5}
 .melds{display:inline-flex;gap:6px;align-items:flex-end;flex-wrap:wrap}
 
-/* 牌 */
-.t{--h:calc(var(--tw) * 1.36);display:inline-flex;flex-direction:column;align-items:center;justify-content:center;width:var(--tw);height:var(--h);background:var(--tile);border-radius:calc(var(--tw) * .14);box-shadow:inset 0 calc(var(--tw) * -.1) 0 var(--tile-edge),0 1px 2px rgba(0,0,0,.35);font-family:var(--display);font-weight:800;line-height:1;color:var(--man);padding-bottom:calc(var(--tw) * .08);flex:none;position:relative;user-select:none}
-.t .n{font-size:calc(var(--tw) * .62)}
-.t .s{font-size:calc(var(--tw) * .38);margin-top:calc(var(--tw) * .04)}
-.t.m .s{color:var(--man-suit)} .t.p .n,.t.p .s{color:var(--pin)} .t.s .n,.t.s .s{color:var(--sou)}
-.t.aka .n,.t.aka .s{color:var(--aka)}
-.t.aka::after{content:"";position:absolute;top:calc(var(--tw) * .1);right:calc(var(--tw) * .1);width:calc(var(--tw) * .16);height:calc(var(--tw) * .16);border-radius:50%;background:var(--aka)}
-.t.z .n{font-size:calc(var(--tw) * .72)}
-.t.z6 .n{color:var(--hatsu)} .t.z7 .n{color:var(--chun)}
-.t.z5 .n{width:calc(var(--tw) * .56);height:calc(var(--tw) * .76);border:calc(var(--tw) * .07) solid var(--haku);border-radius:2px;font-size:0}
+/* 牌（絵柄は tiles.js の SVG。牌は実物の色なので、ライト・ダークどちらでも同じ色） */
+.t{--h:calc(var(--tw) * 1.36);display:inline-grid;place-items:center;width:var(--tw);height:var(--h);background:var(--tile);border-radius:calc(var(--tw) * .14);box-shadow:inset 0 calc(var(--tw) * -.1) 0 var(--tile-edge),0 1px 2px rgba(0,0,0,.35);padding-bottom:calc(var(--tw) * .08);flex:none;position:relative;user-select:none}
+.t .face{display:block;width:calc(var(--tw) * .88);height:calc(var(--h) * .84)}
+.t .tx{font-family:var(--display);font-weight:800}
+.t .tb{color:var(--tb)} .t .tg{color:var(--tg)} .t .tr{color:var(--tr)}
+.t .fb{fill:var(--tb)} .t .fg{fill:var(--tg)} .t .fr{fill:var(--tr)} .t .fk{fill:var(--tk)}
 .t.back{background:var(--tile-back);box-shadow:inset 0 calc(var(--tw) * -.1) 0 #a8741f,0 1px 2px rgba(0,0,0,.35)}
 /* 鳴いた牌は横向き */
-.t.side{width:var(--h);height:var(--tw);padding:0}
-.t.side .rot{display:flex;flex-direction:column;align-items:center;justify-content:center;transform:rotate(-90deg);line-height:1}
+.t.side{width:var(--h);height:var(--tw);padding:0 0 0 calc(var(--tw) * .08)}
+.t.side .face{transform:rotate(-90deg)}
 .t.win{outline:2px solid #f2c14e;outline-offset:1px}
 .small-tiles{--tw:24px}
 
@@ -199,10 +195,12 @@ details.rules ul{margin:8px 0 0;padding-left:1.2em;font-size:13.5px}
 </main>
 
 <script src="mahjong.js"></script>
+<script src="tiles.js"></script>
 <script>
 (function () {
 'use strict';
 const M = window.Mahjong;
+document.body.insertAdjacentHTML('afterbegin', TileFace.DEFS);
 const STORE = 'tensu-drill-v1';
 const $ = id => document.getElementById(id);
 
@@ -226,22 +224,11 @@ let note = '';
 
 /* ---------- 牌の表示 ---------- */
 function tileHTML(code, opts = {}) {
-  const t = M.norm(code);
+  if (opts.back) return '<span class="t back" role="img" aria-label="伏せ牌"></span>';
   const cls = ['t'];
-  let inner;
-  if (opts.back) return '<span class="t back" aria-label="伏せ牌"></span>';
-  if (t >= 27) {
-    cls.push('z', 'z' + (t - 26));
-    inner = `<span class="n">${'東南西北白發中'[t - 27]}</span>`;
-  } else {
-    const su = ['m', 'p', 's'][M.suitOf(t)];
-    cls.push(su);
-    if (M.isRed(code)) cls.push('aka');
-    inner = `<span class="n">${M.numOf(t)}</span><span class="s">${'萬筒索'[M.suitOf(t)]}</span>`;
-  }
-  if (opts.side) { cls.push('side'); inner = `<span class="rot">${inner}</span>`; }
+  if (opts.side) cls.push('side');
   if (opts.win) cls.push('win');
-  return `<span class="${cls.join(' ')}" role="img" aria-label="${M.tileName(code)}${opts.side ? '（鳴き）' : ''}">${inner}</span>`;
+  return `<span class="${cls.join(' ')}" role="img" aria-label="${M.tileName(code)}${opts.side ? '（鳴き）' : ''}">${TileFace.face(M.norm(code), M.isRed(code))}</span>`;
 }
 
 function meldHTML(m) {
