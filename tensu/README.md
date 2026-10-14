@@ -15,7 +15,7 @@
 
 ```
 cd "C:\Users\takay\OneDrive\デスクトップ"
-git clone -b claude/adoring-sagan-5gj26i --sparse https://github.com/tack0221/claudemain.git mahjong-tensu
+git clone -b tensu --sparse https://github.com/tack0221/claudemain.git mahjong-tensu
 cd mahjong-tensu
 git sparse-checkout set tensu
 ```
@@ -24,7 +24,7 @@ git sparse-checkout set tensu
 
 ```
 cd "C:\Users\takay\OneDrive\デスクトップ\mahjong-tensu"
-git pull origin claude/adoring-sagan-5gj26i
+git pull origin tensu
 ```
 
 ## 出題
