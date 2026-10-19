@@ -85,11 +85,16 @@ input:focus-visible,select:focus-visible,button:focus-visible,summary:focus-visi
 /* score entry */
 .seat-grid{display:flex;flex-direction:column;gap:8px}
 /* 1人分 = 縦長の牌（家）＋ 上段:メンバー / 下段:素点 ＋ 右端:結果。狭いスマホでも名前と素点を全幅で表示する */
-.seat{display:grid;grid-template-columns:40px minmax(0,1fr) 54px;grid-template-areas:"w p p" "w s r";gap:6px 8px;align-items:center}
+.seat{display:grid;grid-template-columns:40px minmax(0,1fr) 54px;grid-template-areas:"w p k" "w s r";gap:6px 8px;align-items:center}
 .seat .wind{grid-area:w;align-self:stretch;width:40px;height:auto}
 .seat select{grid-area:p}
 .seat .score-box{grid-area:s}
 .seat .res{grid-area:r}
+/* 飛び賞を受け取った人（飛ばした人）のチェック。飛んだ人がいないとき・飛んだ本人は押せない */
+.seat .tobi{grid-area:k;display:flex;flex-direction:column;align-items:center;gap:1px;font-size:11px;color:var(--muted);cursor:pointer;line-height:1.1}
+.seat .tobi input{width:20px;height:20px;margin:0;accent-color:var(--felt);cursor:pointer}
+.seat .tobi:has(input:disabled){opacity:.4;cursor:default}
+.seat .tobi:has(input:disabled) input{cursor:default}
 .seat-grid{gap:14px}
 .wind{display:grid;place-items:center;width:34px;height:42px;border-radius:5px;background:var(--tile);color:var(--tile-text);font-family:var(--display);font-weight:800;font-size:19px;box-shadow:0 2px 0 var(--line)}
 .score-box{display:flex;min-width:0}
@@ -235,6 +240,7 @@ table.sheet{table-layout:auto;width:max-content;min-width:100%;border-collapse:s
       </div>
       <div class="seat-grid" id="seats"></div>
       <div class="sumline num"><span id="sum-text">合計 0 / 100,000</span><button type="button" class="btn sm" id="fill-rest">残りを自動入力</button></div>
+      <p class="small" id="tobi-note" style="margin:0" hidden></p>
       <div id="form-msg" class="banner warn" hidden></div>
       <button type="submit" class="btn primary big" id="save-game">この半荘を保存</button>
       <button type="button" class="btn ghost" id="cancel-edit" hidden>編集をやめる</button>
@@ -361,7 +367,7 @@ const RULESETS={
 const SEATS=['東','南','西','北'];
 /* チップの換算レート（4麻・3麻共通）。換算値は保存せず、表示のたびに 枚数 × レート で計算する */
 const CHIP_RATE=2;
-/* 飛び賞（記録帳ではスコアに含めて入力している）。素点の無い対局は、スコアがその順位で素点0点台に
+/* 飛び賞。素点で入力した対局はアプリが付ける（tobiAuto）。記録帳ではスコアに含めて入力している。素点の無い対局は、スコアがその順位で素点0点台に
    飛び賞が付いた値（素点 −30/−40 ＋ ウマ − 飛び賞）以下なら飛びとみなす。−1〜−599点は五捨六入で0点扱いになるので「以下」。
    4麻: 2位 −30・3位 −50・4位 −60、3麻: 2位 −50・3位 −60。飛んでいない人はこれより必ず10以上高い */
 const TOBI_PT=10;
@@ -419,6 +425,7 @@ const seatsEl=$('#seats');
 seatsEl.innerHTML=SEATS.map((w,i)=>`<div class="seat">
   <span class="wind" aria-hidden="true">${w}</span>
   <select id="p${i}" aria-label="${w}家のメンバー"></select>
+  <label class="tobi" title="飛び賞を受け取った人（飛ばした人）にチェック"><input type="checkbox" id="t${i}" aria-label="${w}家が飛び賞を受け取った">飛び賞</label>
   <div class="score-box"><input type="number" step="any" id="s${i}" placeholder="25000" aria-label="${w}家の素点"></div>
   <div class="res num" id="r${i}" aria-live="polite"></div></div>`).join('');
 $('#g-date').value=today();
@@ -439,17 +446,35 @@ function exclusive(sels){const chosen=sels.map(s=>s.value);
   sels.forEach((s,i)=>{for(const o of s.options)o.disabled=!!o.value&&chosen.some((v,j)=>j!==i&&v===o.value)})}
 const seatSels=()=>act().map(i=>$('#p'+i));
 seatsEl.addEventListener('change',e=>{if(e.target.tagName==='SELECT')exclusive(seatSels())});
+/* 飛び賞: 素点がマイナスの人はそれぞれ −TOBI_PT、チェックを付けた1人がその全員分を受け取る（順位は素点で決まるので変わらない）。
+   飛び賞を付ける前の古い対局（素点を手で調整して入力済み）を編集するときは付けない */
+const tobiOn=()=>!(editing&&!editing.tobiAuto);
+const tobiRecv=()=>act().findIndex(i=>$('#t'+i).checked);
+function applyTobi(res,raws,recv){const busted=raws.map((x,i)=>x<0?i:-1).filter(i=>i>=0);
+  if(!busted.length||recv<0)return res;busted.forEach(i=>res[i].point-=TOBI_PT);res[recv].point+=TOBI_PT*busted.length;return res}
+/* チェックの状態を整える: 飛んだ人がいないとき・飛んだ本人・使わない席はチェックを外して押せなくする */
+function syncTobiBoxes(raws){const on=tobiOn(),any=raws.some(x=>x!=null&&x<0);
+  for(let i=0;i<4;i++){const b=$('#t'+i),off=!on||!any||i>=raws.length||(raws[i]!=null&&raws[i]<0);b.disabled=off;if(off)b.checked=false}}
+seatsEl.addEventListener('change',e=>{const b=e.target;if(b.type!=='checkbox'||!b.checked)return;
+  for(let i=0;i<4;i++)if($('#t'+i)!==b)$('#t'+i).checked=false;formMsg('');updatePreview()});
 function updatePreview(){
   const r=curRules(),n=r.n,raws=act().map(readRaw);
+  syncTobiBoxes(raws);
   const filled=raws.filter(x=>x!=null&&!isNaN(x));const sum=filled.reduce((a,b)=>a+b,0),target=r.start*n;
   const diff=sum-target;
   $('#sum-text').innerHTML=`合計 <b>${fmtRaw(sum)}</b> / ${fmtRaw(target)}`+(filled.length===n&&diff!==0?` <span class="neg">（${diff>0?'+':''}${fmtRaw(diff)}）</span>`:filled.length===n?' <span class="pos">✓</span>':'');
   $('#fill-rest').disabled=raws.filter(x=>x==null).length!==1;
   const ok=filled.length===n&&raws.every(x=>x!=null&&!isNaN(x));
-  const res=ok?calc(raws,r):null;
+  const recv=tobiRecv(),busted=raws.filter(x=>x!=null&&x<0).length;
+  const res=ok?(tobiOn()?applyTobi(calc(raws,r),raws,recv):calc(raws,r)):null;
+  const note=$('#tobi-note');
+  if(!tobiOn()&&busted){note.className='small muted';note.textContent='この対局は飛び賞を素点に含めて記録しているので、飛び賞は自動で付けません。';note.hidden=false}
+  else if(busted&&recv<0){note.className='small neg';note.textContent=`素点がマイナスの人がいます。飛び賞（${busted}人分 ${TOBI_PT*busted}点）を受け取った人に「飛び賞」のチェックを入れてください。`;note.hidden=false}
+  else if(busted){note.className='small muted';note.textContent=`飛び賞: ${$('#p'+recv).value?mname($('#p'+recv).value):'チェックした人'} +${TOBI_PT*busted}、素点がマイナスの人${busted>1?' 各':' '}−${TOBI_PT}（スコアに反映済み）`;note.hidden=false}
+  else note.hidden=true;
   for(let i=0;i<4;i++){const el=$('#r'+i);
     if(res&&i<n){el.innerHTML=`<b class="${pc(res[i].point)}">${fmtPt(res[i].point)}</b><span>${res[i].rank}位</span>`}else el.innerHTML=''}
-  $('#rule-summary').textContent='ルール（'+n+'人麻雀）: '+r.text+'。同点のときに備えて、席は対局開始時（起家＝東）で入力してください。';
+  $('#rule-summary').textContent='ルール（'+n+'人麻雀）: '+r.text+`。飛び賞は${TOBI_PT}点（素点がマイナスの人が払い、チェックを付けた人が全員分を受け取る）。同点のときに備えて、席は対局開始時（起家＝東）で入力してください。`;
 }
 seatsEl.addEventListener('input',updatePreview);
 $('#fill-rest').addEventListener('click',()=>{const r=curRules(),raws=act().map(readRaw);const e=raws.findIndex(x=>x==null);
@@ -475,16 +500,16 @@ document.addEventListener('click',e=>{const b=e.target.closest('.mode-seg button
   if(f==='input'){if(m===inputMode)return;inputMode=m;store.set('mj.inputMode',m);formMsg('');applyInputMode()}
   else if(f==='sheet'){if(m===sheet.mode)return;sheet.mode=m;saveDraft();sheetMsg('');renderSheet()}  else{if(m===viewMode)return;viewMode=m;store.set('mj.viewMode',m);syncModeSegs();renderHistory();renderStats()}});
 function formMsg(t){const el=$('#form-msg');el.textContent=t||'';el.hidden=!t}
-function resetForm(){editing=null;for(let i=0;i<4;i++)$('#s'+i).value='';$('#input-title').textContent='半荘の結果を入力';
+function resetForm(){editing=null;for(let i=0;i<4;i++){$('#s'+i).value='';$('#t'+i).checked=false}$('#input-title').textContent='半荘の結果を入力';
   $('#save-game').textContent='この半荘を保存';$('#cancel-edit').hidden=true;formMsg('');syncModeSegs();fillMemberSelects();updatePreview()}
 $('#cancel-edit').addEventListener('click',()=>{for(let i=0;i<4;i++)$('#p'+i).value='';resetForm()});
 function startEdit(id){const g=games.find(x=>x.id===id);if(!g)return;
   if(g.manual){sheetStartEdit(g);return}
   editing=g;showTab('input');setKind('game');
   if(g.mode!==inputMode){inputMode=g.mode;store.set('mj.inputMode',g.mode)}
-  for(let i=0;i<4;i++){$('#p'+i).value='';$('#s'+i).value=''}applyInputMode();
+  for(let i=0;i<4;i++){$('#p'+i).value='';$('#s'+i).value='';$('#t'+i).checked=false}applyInputMode();
   $('#g-date').value=g.date;const ps=[...g.players].sort((a,b)=>a.seat-b.seat);
-  ps.forEach((p,i)=>{$('#p'+i).value=p.memberId;$('#s'+i).value=String(p.raw)});exclusive(seatSels());
+  ps.forEach((p,i)=>{$('#p'+i).value=p.memberId;$('#s'+i).value=String(p.raw);$('#t'+i).checked=p.tobi>0});exclusive(seatSels());
   $('#input-title').textContent=`対局 #${g.gameId} を編集`;$('#save-game').textContent='変更を保存';$('#cancel-edit').hidden=false;formMsg('');updatePreview()}
 
 $('#game-form').addEventListener('submit',async e=>{e.preventDefault();
@@ -499,13 +524,17 @@ $('#game-form').addEventListener('submit',async e=>{e.preventDefault();
   if(raws.some(x=>x==null||isNaN(x))){formMsg(`${n}人分の素点を数字で入力してください。`);return}
   const sum=raws.reduce((a,b)=>a+b,0);
   if(sum!==r.start*n){formMsg(`素点の合計が${fmtRaw(sum)}点です。${fmtRaw(r.start*n)}点になるよう直してください（供託が残った場合は1位の点数に加えます）。`);return}
-  const res=calc(raws,r);
-  /* 対局結果: mode=人数(3|4)、seat=開始時の席（東南西北）、rawScore=入力した素点、score=計算後のスコア */
-  const results=ids.map((id,i)=>({seat:SEATS[i],userId:id,rawScore:raws[i],score:res[i].point}));
+  const tobi=tobiOn(),recv=tobiRecv();
+  if(tobi&&raws.some(x=>x<0)&&recv<0){formMsg('素点がマイナスの人がいます。飛び賞を受け取った人に「飛び賞」のチェックを入れてください。');return}
+  const pre=calc(raws,r).map(x=>x.point),res=tobi?applyTobi(calc(raws,r),raws,recv):calc(raws,r);
+  /* 対局結果: mode=人数(3|4)、seat=開始時の席（東南西北）、rawScore=入力した素点、score=計算後のスコア（飛び賞込み）、
+     tobi=飛び賞の増減（tobiAuto の対局だけ）。tobiAuto の無い対局は、飛び賞を素点に含めて入力した古い記録 */
+  const results=ids.map((id,i)=>({seat:SEATS[i],userId:id,rawScore:raws[i],score:res[i].point,...(tobi?{tobi:res[i].point-pre[i]}:{})}));
+  const extra=tobi?{tobiAuto:true}:{};
   const btn=$('#save-game');btn.disabled=true;
   try{let gameId;
-    if(editing){gameId=editing.gameId;await col('games').doc(editing.id).set({gameId,mode:n,date,results})}
-    else gameId=await createGame({mode:n,date,results});
+    if(editing){gameId=editing.gameId;await col('games').doc(editing.id).set({gameId,mode:n,date,results,...extra})}
+    else gameId=await createGame({mode:n,date,results,...extra});
     store.set(lastKey(),ids);toast(editing?`対局 #${gameId} を更新しました`:`対局 #${gameId} として保存しました`);
     const keep=ids;resetForm();keep.forEach((id,i)=>$('#p'+i).value=id);exclusive(seatSels());$('#s0').focus()}
   catch(err){handleWriteErr(err,formMsg)}
@@ -683,7 +712,7 @@ function pct(n,d){return d?(n/d*100).toFixed(1)+'%':'—'}
 
 function gameHtml(g,no){const ps=[...g.players].sort((a,b)=>a.rank-b.rank||a.seat-b.seat);
   return `<div class="game"><div class="game-head"><span>第${no}半荘</span><span class="num">対局 #${g.gameId}</span>${g.manual?'<span>記録帳</span>':''}${canWrite&&db?`<span class="acts"><button class="btn sm" data-edit="${esc(g.id)}">編集</button><button class="btn sm" data-del="${esc(g.id)}">削除</button></span>`:''}</div>
-  <table><tbody>${ps.map(p=>`<tr><td class="c-rk"><span class="rk ${rkClass(p.rank,g.mode)}">${p.rank}</span></td><td class="nm">${esc(mname(p.memberId))} <span class="small muted">${p.seatKnown?SEATS[p.seat]:''}</span></td><td class="r c-raw">${p.raw==null?'<span class="muted">—</span>':fmtRaw(p.raw)}</td><td class="r c-pt ${pc(p.point)}"><b>${fmtPt(p.point)}</b></td></tr>`).join('')}</tbody></table></div>`}
+  <table><tbody>${ps.map(p=>`<tr><td class="c-rk"><span class="rk ${rkClass(p.rank,g.mode)}">${p.rank}</span></td><td class="nm">${esc(mname(p.memberId))} <span class="small muted">${p.seatKnown?SEATS[p.seat]:''}</span>${p.tobi?` <span class="small ${pc(p.tobi)}">飛び賞${fmtPt(p.tobi)}</span>`:''}</td><td class="r c-raw">${p.raw==null?'<span class="muted">—</span>':fmtRaw(p.raw)}</td><td class="r c-pt ${pc(p.point)}"><b>${fmtPt(p.point)}</b></td></tr>`).join('')}</tbody></table></div>`}
 /* スコアの集計とチップの集計を合わせ、チップ込み合計の大きい順に並べる */
 function combine(list,chipList){const agg=aggregate(list),cm=chipAgg(chipList||[]);
   const ids=[...new Set([...agg.map(s=>s.id),...Object.keys(cm)])];
@@ -850,11 +879,12 @@ function applyWriteMode(){const ro=!base;$('#save-game').disabled=ro;$('#c-save'
 function toGame(id,x){const mode=asMode(x&&x.mode);/* mode の無い古い対局は4麻 */
   if(!x||!x.gameId||!x.date||!Array.isArray(x.results)||x.results.length!==mode)return null;
   const players=x.results.map((r,i)=>{const si=SEATS.indexOf(r.seat);
-    return{seat:si<0?i:si,seatKnown:si>=0,memberId:r.userId,raw:r.rawScore==null?null:Number(r.rawScore),point:Number(r.score)}});
+    return{seat:si<0?i:si,seatKnown:si>=0,memberId:r.userId,raw:r.rawScore==null?null:Number(r.rawScore),point:Number(r.score),tobi:Number(r.tobi)||0}});
   const manual=players.some(p=>p.raw==null);
-  if(players.every(p=>p.seatKnown))[...players].sort((a,b)=>b.point-a.point||a.seat-b.seat).forEach((p,k)=>p.rank=k+1);
+  /* 素点のある対局は素点の順（飛び賞を足す前の順位）。同点は上家優先 */
+  if(players.every(p=>p.seatKnown))[...players].sort((a,b)=>(manual?b.point-a.point:b.raw-a.raw)||a.seat-b.seat).forEach((p,k)=>p.rank=k+1);
   else players.forEach(p=>p.rank=1+players.filter(q=>q.point>p.point).length);
-  return{id,gameId:Number(x.gameId),mode,date:x.date,players,manual}}
+  return{id,gameId:Number(x.gameId),mode,date:x.date,players,manual,tobiAuto:!!x.tobiAuto}}
 function renderAll(){fillMemberSelects();updatePreview();renderToday();renderHistory();renderStats();renderMembers();renderChipViews();
   /* 記録帳・チップに入力中なら、打っている途中の欄を消さないよう作り直さない */
   if(!$('#sheet').contains(document.activeElement))renderSheet();
